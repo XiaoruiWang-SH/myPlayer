@@ -1,7 +1,24 @@
 import { formatTime, nextSpeed } from '../../../shared/audio-utils'
+import type { LoopMode } from '../../../shared/types'
 import type { Player } from '../player'
 
 const TIMEUPDATE_THROTTLE_MS = 250
+
+export const LOOP_LABELS: Record<LoopMode, string> = {
+  list: '列表循环',
+  single: '单曲循环',
+  sequential: '顺序播放'
+}
+
+export interface PlayerBarActions {
+  onPrev(): void
+  onNext(): void
+  onCycleLoop(): LoopMode
+}
+
+export interface PlayerBarHandle {
+  updateLoopMode(mode: LoopMode): void
+}
 
 function $(id: string): HTMLElement {
   const el = document.getElementById(id)
@@ -17,8 +34,11 @@ function show(el: SVGElement, visible: boolean): void {
   el.style.display = visible ? '' : 'none'
 }
 
-export function initPlayerBar(player: Player): void {
+export function initPlayerBar(player: Player, actions: PlayerBarActions): PlayerBarHandle {
   const playBtn = $('play-btn') as HTMLButtonElement
+  const prevBtn = $('prev-btn') as HTMLButtonElement
+  const nextBtn = $('next-btn') as HTMLButtonElement
+  const loopBtn = $('loop-btn') as HTMLButtonElement
   const iconPlay = $svg('icon-play')
   const iconPause = $svg('icon-pause')
   const seekBar = $('seek-bar') as HTMLInputElement
@@ -40,9 +60,10 @@ export function initPlayerBar(player: Player): void {
     playBtn.disabled = !player.hasSource
   }
 
-  function renderMuteState(): void {
+  function renderVolumeState(): void {
     show(iconVolume, !player.muted)
     show(iconMuted, player.muted)
+    volumeBar.value = String(player.volumePercent)
   }
 
   function renderRate(): void {
@@ -53,18 +74,22 @@ export function initPlayerBar(player: Player): void {
   function renderProgress(): void {
     const duration = player.duration
     if (Number.isFinite(duration) && duration > 0) {
+      seekBar.disabled = false
       seekBar.max = String(duration)
       durationLabel.textContent = formatTime(duration)
+    } else {
+      seekBar.disabled = true
+      seekBar.max = '0'
+      seekBar.value = '0'
+      durationLabel.textContent = '00:00'
     }
     currentTimeLabel.textContent = formatTime(player.currentTime)
     if (!seeking) seekBar.value = String(player.currentTime)
   }
 
   player.on('statechange', renderPlayState)
-  player.on('loadedmetadata', () => {
-    seekBar.disabled = false
-    renderProgress()
-  })
+  player.on('loadedmetadata', renderProgress)
+  player.on('volumechange', renderVolumeState)
   player.on('timeupdate', () => {
     const now = performance.now()
     if (now - lastUiUpdate < TIMEUPDATE_THROTTLE_MS) return
@@ -72,7 +97,14 @@ export function initPlayerBar(player: Player): void {
     renderProgress()
   })
 
+  const updateLoopMode = (mode: LoopMode): void => {
+    loopBtn.textContent = LOOP_LABELS[mode]
+  }
+
   playBtn.addEventListener('click', () => player.toggle())
+  prevBtn.addEventListener('click', () => actions.onPrev())
+  nextBtn.addEventListener('click', () => actions.onNext())
+  loopBtn.addEventListener('click', () => updateLoopMode(actions.onCycleLoop()))
 
   seekBar.addEventListener('pointerdown', () => {
     seeking = true
@@ -85,16 +117,10 @@ export function initPlayerBar(player: Player): void {
     currentTimeLabel.textContent = formatTime(player.currentTime)
   })
 
-  muteBtn.addEventListener('click', () => {
-    player.toggleMute()
-    renderMuteState()
-  })
+  muteBtn.addEventListener('click', () => player.toggleMute())
 
   volumeBar.addEventListener('input', () => {
-    if (player.muted) {
-      player.toggleMute()
-      renderMuteState()
-    }
+    if (player.muted) player.toggleMute()
     player.setVolume(Number(volumeBar.value))
   })
 
@@ -104,7 +130,9 @@ export function initPlayerBar(player: Player): void {
   })
 
   renderPlayState()
-  renderMuteState()
+  renderVolumeState()
   renderRate()
   renderProgress()
+
+  return { updateLoopMode }
 }

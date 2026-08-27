@@ -171,7 +171,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 | 方式 | 实现 |
 | --- | --- |
 | 打开对话框 | 菜单项 / ⌘O → 主进程 `dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'MP3', extensions: ['mp3'] }] })` → IPC 返回路径数组 → 渲染层加入列表 |
-| 拖拽 | 渲染层监听 `dragover`（`preventDefault`）/ `drop` → 遍历 `e.dataTransfer.files` → 通过 preload 的 `webUtils.getPathForFile(file)` 取真实路径 → 过滤 `.mp3` → 加入列表 |
+| 拖拽 | 渲染层监听 `dragover`（`preventDefault`）/ `drop` → 遍历 `e.dataTransfer.files` → 通过 preload 的 `webUtils.getPathForFile(file)` 取真实路径 → 过滤 `.mp3` → `allowPaths` 登记白名单 → 加入列表 |
 
 > 注意：Electron 新版已废弃非标准的 `File.path` 属性，必须使用 `webUtils.getPathForFile`。
 
@@ -188,6 +188,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 interface MyPlayerBridge {
   // invoke（请求-响应）
   openFiles(): Promise<string[]>
+  allowPaths(paths: string[]): Promise<void>  // 拖拽路径登记进媒体白名单
   loadState(): Promise<PersistedData>
   saveState(state: PersistedData['playbackState']): Promise<void>
   getSettings(): Promise<PersistedData['settings']>
@@ -238,11 +239,15 @@ myPlayer/
 ├── tsconfig.json
 ├── docs/
 │   ├── PRD.md
-│   └── TECHNICAL_DESIGN.md
+│   ├── TECHNICAL_DESIGN.md
+│   └── PROGRESS.md
 ├── src/
 │   ├── shared/
-│   │   ├── types.ts          # 跨进程共享类型（IPC、持久化结构）
-│   │   └── audio-utils.ts    # 纯函数（进度钳制、时间格式化、音量步进），可单测
+│   │   ├── types.ts           # 跨进程共享类型（IPC、持久化结构）
+│   │   ├── audio-utils.ts     # 纯函数（进度钳制、时间格式化、音量步进）
+│   │   ├── playlist-utils.ts  # 纯函数（MP3 过滤、去重键、循环模式前后首计算）
+│   │   ├── shortcut-utils.ts  # 纯函数（按键事件 → 快捷键组合串）
+│   │   └── *.test.ts          # 以上纯函数的 Vitest 单测
 │   ├── main/
 │   │   ├── index.ts          # 生命周期、窗口创建
 │   │   ├── ipc.ts            # ipcMain.handle 注册
@@ -256,10 +261,12 @@ myPlayer/
 │       ├── index.html
 │       ├── styles.css
 │       └── src/
-│           ├── main.ts       # 启动、状态恢复编排
-│           ├── player.ts     # Player 核心
-│           ├── playlist.ts   # Playlist 模型
-│           ├── shortcuts.ts  # 快捷键管理器
+│           ├── global.d.ts        # window.myPlayer 全局类型声明
+│           ├── main.ts            # 启动、列表/播放编排
+│           ├── player.ts          # Player 核心
+│           ├── playlist.ts        # Playlist 模型
+│           ├── duration-prober.ts # 时长串行探测（隐藏 audio + 超时标记不可播）
+│           ├── shortcuts.ts       # 快捷键管理器
 │           ├── media-session.ts
 │           └── ui/
 │               ├── player-bar.ts

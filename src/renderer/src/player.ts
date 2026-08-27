@@ -1,10 +1,16 @@
 import { DEFAULT_SEEK_STEP, clampSeekTime } from '../../shared/audio-utils'
 
-export type PlayerEvent = 'timeupdate' | 'statechange' | 'loadedmetadata' | 'ended' | 'error'
+export type PlayerEvent =
+  | 'timeupdate'
+  | 'statechange'
+  | 'loadedmetadata'
+  | 'ended'
+  | 'error'
+  | 'volumechange'
 
 type Listener = () => void
 
-const MEDIA_URL_PREFIX = 'media://local/'
+export const MEDIA_URL_PREFIX = 'media://local/'
 
 export class Player {
   private audio = document.createElement('audio')
@@ -13,7 +19,8 @@ export class Player {
     statechange: [],
     loadedmetadata: [],
     ended: [],
-    error: []
+    error: [],
+    volumechange: []
   }
   private seekStep = DEFAULT_SEEK_STEP
 
@@ -25,6 +32,7 @@ export class Player {
     this.audio.addEventListener('loadedmetadata', () => this.emit('loadedmetadata'))
     this.audio.addEventListener('ended', () => this.emit('ended'))
     this.audio.addEventListener('error', () => this.emit('error'))
+    this.audio.addEventListener('volumechange', () => this.emit('volumechange'))
   }
 
   on(event: PlayerEvent, listener: Listener): () => void {
@@ -66,6 +74,12 @@ export class Player {
   toggle(): void {
     if (this.audio.paused) void this.play()
     else this.pause()
+  }
+
+  unload(): void {
+    this.audio.pause()
+    this.audio.removeAttribute('src')
+    this.audio.load()
   }
 
   seekBy(deltaSec: number): void {
