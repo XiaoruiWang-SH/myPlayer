@@ -1,0 +1,32 @@
+{
+  "name": "myplayer",
+  "version": "0.1.0",
+  "description": "macOS 本地音频播放器 —— 打开即播、键盘友好、没有多余功能。",
+  "main": "./out/main/index.js",
+  "private": true,
+  "author": "raywang",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XiaoruiWang-SH/myPlayer.git"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  }
+}

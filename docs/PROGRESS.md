@@ -16,7 +16,7 @@
 
 | 阶段 | 目标 | 对应需求 | 对应里程碑 | 状态 |
 | --- | --- | --- | --- | --- |
-| 0 项目基建 | 工程可运行、窗口可打开 | — | M1 前置 | ⬜ |
+| 0 项目基建 | 工程可运行、窗口可打开 | — | M1 前置 | ✅ 2026-08-27 |
 | 1 播放核心 | 单文件播放控制完整可用 | FR-01~06 | M1 | ⬜ |
 | 2 播放列表与快捷键 | 多曲目播放 + 全键盘操作 | FR-07、FR-09~15、PRD §6 快捷键表 | M2 | ⬜ |
 | 3 设置与记忆 | 步长设置、状态记忆、媒体键 | FR-16~24 | M3 | ⬜ |
@@ -28,15 +28,15 @@
 
 ### 步骤
 
-- [ ] **0.1** 初始化 git 仓库与 npm 项目；安装并锁定依赖版本：`electron`、`electron-vite`、`electron-builder`、`typescript`、`electron-store`、`vitest`
-- [ ] **0.2** 构建配置：`electron.vite.config.ts`、tsconfig（main/preload/renderer 三套）、`electron-builder.yml`（appId、productName、mac category）、npm scripts（`dev` / `typecheck` / `build`）
-- [ ] **0.3** 三进程骨架：主进程创建窗口（最小尺寸 480×360、拦截新窗口与导航，见技术文档 §5）、空 preload、renderer 占位页面；应用菜单雏形（保留 About/Quit/编辑）
+- [x] **0.1** 初始化 git 仓库与 npm 项目；安装并锁定依赖版本：`electron`、`electron-vite`、`electron-builder`、`typescript`、`electron-store`、`vitest`
+- [x] **0.2** 构建配置：`electron.vite.config.ts`、tsconfig（main/preload/renderer 三套）、`electron-builder.yml`（appId、productName、mac category）、npm scripts（`dev` / `typecheck` / `build`）
+- [x] **0.3** 三进程骨架：主进程创建窗口（最小尺寸 480×360、拦截新窗口与导航，见技术文档 §5）、空 preload、renderer 占位页面；应用菜单雏形（保留 About/Quit/编辑）
 
 ### 验证
 
-- [ ] `npm run dev` 正常打开窗口，控制台无错误
-- [ ] `npm run typecheck` 通过
-- [ ] 提交入库，commit message 注明「阶段 0 项目基建」
+- [x] `npm run dev` 正常打开窗口，控制台无错误（2026-08-27 用户确认窗口显示正常）
+- [x] `npm run typecheck` 通过
+- [x] 提交入库，commit message 注明「阶段 0 项目基建」
 
 ---
 
