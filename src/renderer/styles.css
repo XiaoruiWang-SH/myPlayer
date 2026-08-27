@@ -1,6 +1,7 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --control-height: 40px;
 }
 
 * {
@@ -11,21 +12,138 @@
 
 body {
   height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
   background: Canvas;
   color: CanvasText;
+  font-size: 13px;
 }
 
 #app {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+#toolbar button {
+  padding: 4px 12px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#toolbar button:active {
+  background: rgba(128, 128, 128, 0.2);
+}
+
+#playlist-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
 }
 
 .hint {
-  margin-top: 8px;
-  font-size: 13px;
-  opacity: 0.6;
+  opacity: 0.55;
+  text-align: center;
+  padding: 0 16px;
+  word-break: break-all;
+}
+
+#player-bar {
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  padding: 10px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  opacity: 0.8;
+  min-width: 42px;
+  text-align: center;
+}
+
+input[type='range'] {
+  flex: 1;
+  accent-color: #0a84ff;
+  cursor: pointer;
+}
+
+input[type='range']:disabled {
+  cursor: default;
+}
+
+#volume-bar {
+  flex: none;
+  width: 90px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  height: var(--control-height);
+}
+
+.control-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.control-row button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#play-btn {
+  width: 44px;
+  height: 36px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+}
+
+.volume-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#mute-btn {
+  width: 28px;
+  height: 28px;
+}
+
+#rate-btn {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
 }

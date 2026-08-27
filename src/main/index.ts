@@ -1,6 +1,10 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { createMenu } from './menu'
+import { setupIpc } from './ipc'
+import { registerMediaScheme, setupMediaProtocol } from './protocol'
+
+registerMediaScheme()
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -32,6 +36,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  setupMediaProtocol()
+  setupIpc()
   createMenu()
   createWindow()
 

@@ -34,6 +34,9 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+# Local dev test assets (generated audio samples)
+dev-assets/
+
 # Caches
 .cache/
 .eslintcache

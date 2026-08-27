@@ -73,7 +73,7 @@ class Player {
 ```
 
 - 事件订阅：`timeupdate`（更新进度条，节流 ~250ms）、`ended`（交给循环模式处理）、`error`（提示并跳下一首）、`loadedmetadata`（时长）。
-- 文件通过 `file://` URL 加载；渲染层需要设置允许访问本地文件（见 §7 安全）。
+- 文件通过 `media://` 协议 URL 加载（主进程白名单校验，见 §5 安全）。
 
 ### 3.2 Playlist 模型（renderer）
 
@@ -210,7 +210,7 @@ interface MyPlayerBridge {
 | `nodeIntegration` | `false` | 强制 |
 | `sandbox` | `false` | preload 需要 `webUtils`/`contextBridge` 完整能力；其余隔离手段已覆盖风险 |
 | `webSecurity` | `true` | 默认 |
-| 本地文件访问 | `protocol.registerFileProtocol` 自定义 `media://` 协议 | 渲染层加载音频走白名单协议，替代直接放开 `file://`，缩小暴露面 |
+| 本地文件访问 | `protocol.handle` 注册自定义 `media://` 协议（`app.ready` 前用 `registerSchemesAsPrivileged` 登记 `standard/secure/stream/supportFetchAPI/bypassCSP/corsEnabled` 权限）；处理器解析 Range 后用 `net.fetch` file URL 取切片，再包装为 206 响应（显式 `Content-Range`），保证进度跳转可用 | 渲染层加载音频走白名单协议，替代直接放开 `file://`，缩小暴露面。两处实测约束：权限缺 `standard` 时媒体管道会在重发请求后中断；直接透传 `net.fetch` 的 200 响应会使 `seekable` 失效 |
 | `setWindowOpenHandler` | 拒绝所有新窗口 | 防止被内容劫持开窗 |
 | 导航 | `will-navigate` 阻止 | 同上 |
 
@@ -241,10 +241,12 @@ myPlayer/
 │   └── TECHNICAL_DESIGN.md
 ├── src/
 │   ├── shared/
-│   │   └── types.ts          # 跨进程共享类型（IPC、持久化结构）
+│   │   ├── types.ts          # 跨进程共享类型（IPC、持久化结构）
+│   │   └── audio-utils.ts    # 纯函数（进度钳制、时间格式化、音量步进），可单测
 │   ├── main/
 │   │   ├── index.ts          # 生命周期、窗口创建
 │   │   ├── ipc.ts            # ipcMain.handle 注册
+│   │   ├── protocol.ts       # media:// 协议与路径白名单
 │   │   ├── store.ts          # electron-store 封装
 │   │   ├── menu.ts           # 应用菜单
 │   │   └── media-keys.ts     # globalShortcut 兜底方案（默认关闭）
