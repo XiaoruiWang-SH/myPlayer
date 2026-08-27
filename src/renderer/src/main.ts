@@ -1,11 +1,14 @@
 import { VOLUME_STEP, adjustVolume } from '../../shared/audio-utils'
 import { nextTrackIndex, prevTrackIndex } from '../../shared/playlist-utils'
+import type { PlaybackState } from '../../shared/types'
 import { DurationProber } from './duration-prober'
+import { initMediaSession } from './media-session'
 import { Player } from './player'
 import { Playlist } from './playlist'
 import { initShortcuts, type ShortcutAction } from './shortcuts'
 import { initPlayerBar } from './ui/player-bar'
 import { renderPlaylist } from './ui/playlist-view'
+import { initSettingsDialog } from './ui/settings-dialog'
 import { showToast } from './ui/toast'
 
 const player = new Player()
@@ -33,15 +36,61 @@ const playerBar = initPlayerBar(player, {
   onCycleLoop: () => playlist.cycleLoopMode()
 })
 
+const mediaSession = initMediaSession(player, {
+  onPrev: () => playPrev(),
+  onNext: () => playNext()
+})
+
+// ---- 状态落盘（FR-19/22）----
+
+const PROGRESS_SAVE_INTERVAL_MS = 5000
+let restoring = true
+let lastProgressSave = 0
+
+function snapshotState(): PlaybackState {
+  return {
+    playlist: playlist.items.map((track) => track.path),
+    currentIndex: playlist.currentIndex,
+    currentTime: player.currentTime,
+    volume: player.volumePercent,
+    muted: player.muted,
+    rate: player.rate,
+    loopMode: playlist.loopMode
+  }
+}
+
+function persistNow(): void {
+  if (restoring) return
+  void window.myPlayer.saveState(snapshotState())
+}
+
+player.on('timeupdate', () => {
+  if (player.paused) return
+  const now = performance.now()
+  if (now - lastProgressSave < PROGRESS_SAVE_INTERVAL_MS) return
+  lastProgressSave = now
+  persistNow()
+})
+player.on('volumechange', persistNow)
+player.on('ratechange', persistNow)
+
+window.addEventListener('beforeunload', () => {
+  window.myPlayer.saveStateSync(snapshotState())
+})
+
+// ---- 播放编排 ----
+
 async function playIndex(index: number): Promise<void> {
   const track = playlist.items[index]
   if (!track) return
   playlist.currentIndex = index
+  mediaSession.updateTrack(track)
   render()
   try {
     await player.load(track.path)
     await player.play()
     failedIds.clear()
+    persistNow()
   } catch {
     // error 事件统一处理（提示 + 跳下一首）
   }
@@ -100,6 +149,7 @@ async function addFiles(paths: string[]): Promise<void> {
   if (added.length > 0) {
     await window.myPlayer.allowPaths(added.map((track) => track.path))
     prober.enqueue(added)
+    persistNow()
   }
   render()
   if (wasEmpty && added.length > 0) {
@@ -114,7 +164,11 @@ async function openFiles(): Promise<void> {
 function removeCurrent(): void {
   const result = playlist.removeAt(playlist.currentIndex)
   if (!result) return
-  if (result.wasCurrent) player.unload()
+  if (result.wasCurrent) {
+    player.unload()
+    mediaSession.updateTrack(null)
+  }
+  persistNow()
   render()
 }
 
@@ -123,6 +177,8 @@ function clearList(): void {
   playlist.clear()
   failedIds.clear()
   player.unload()
+  mediaSession.updateTrack(null)
+  persistNow()
   render()
 }
 
@@ -141,7 +197,73 @@ function changeVolume(delta: number): void {
 
 function cycleLoopMode(): void {
   playerBar.updateLoopMode(playlist.cycleLoopMode())
+  persistNow()
 }
+
+// ---- 设置（FR-16~18）----
+
+const settingsDialog = initSettingsDialog({
+  getCurrentStep: () => player.seekStepSeconds,
+  applyStep: (step) => {
+    player.setSeekStep(step)
+    void window.myPlayer.setSettings({ seekStep: step })
+  }
+})
+
+window.myPlayer.onOpenSettings(() => settingsDialog.open())
+
+// ---- 启动恢复（FR-19~21）----
+
+async function restoreState(): Promise<void> {
+  try {
+    const persisted = await window.myPlayer.loadState()
+    player.setSeekStep(persisted.settings.seekStep)
+    player.setVolume(persisted.playbackState.volume)
+    if (persisted.playbackState.muted) player.toggleMute()
+    player.setRate(persisted.playbackState.rate)
+    playlist.loopMode = persisted.playbackState.loopMode
+    playerBar.updateLoopMode(playlist.loopMode)
+
+    const paths = persisted.playbackState.playlist
+    if (paths.length > 0) {
+      const { valid, missing } = await window.myPlayer.filterExisting(paths)
+      if (missing.length > 0) showToast(`已跳过 ${missing.length} 个不再存在的文件`)
+      if (valid.length > 0) {
+        const validSet = new Set(valid)
+        const survivors = paths
+          .map((path, index) => ({ path, index }))
+          .filter((entry) => validSet.has(entry.path))
+        playlist.restore(valid)
+
+        const oldIndex = persisted.playbackState.currentIndex
+        let newIndex = -1
+        if (oldIndex >= 0) {
+          const pos = survivors.findIndex((entry) => entry.index >= oldIndex)
+          newIndex = pos >= 0 ? pos : survivors.length - 1
+        }
+        playlist.currentIndex = newIndex
+        prober.enqueue(playlist.items)
+
+        // 加载当前曲目但保持暂停态（FR-20）
+        const track = playlist.current
+        if (track) {
+          mediaSession.updateTrack(track)
+          try {
+            await player.load(track.path)
+            player.seekTo(persisted.playbackState.currentTime)
+          } catch {
+            // 加载失败交给用户手动播放时的错误处理
+          }
+        }
+      }
+    }
+  } finally {
+    restoring = false
+    render()
+  }
+}
+
+// ---- 快捷键与交互 ----
 
 initShortcuts((action: ShortcutAction) => {
   switch (action) {
@@ -176,8 +298,7 @@ initShortcuts((action: ShortcutAction) => {
       void openFiles()
       break
     case 'openSettings':
-      // 设置弹窗在阶段 3 接入（FR-17）
-      showToast('设置功能即将在下一阶段提供')
+      settingsDialog.open()
       break
   }
 })
@@ -195,3 +316,4 @@ window.addEventListener('drop', (event) => {
 })
 
 render()
+void restoreState()

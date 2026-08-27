@@ -1,5 +1,12 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { access } from 'node:fs/promises'
 import { allowMediaPath } from './protocol'
+import {
+  readPersistedState,
+  readSettings,
+  writePlaybackState,
+  writeSettings
+} from './store'
 
 export function setupIpc(): void {
   ipcMain.handle('files:open', async (event) => {
@@ -22,5 +29,39 @@ export function setupIpc(): void {
     for (const path of paths) {
       if (typeof path === 'string' && path.length > 0) allowMediaPath(path)
     }
+  })
+
+  ipcMain.handle('files:filter-existing', async (_event, paths: unknown) => {
+    const valid: string[] = []
+    const missing: string[] = []
+    if (!Array.isArray(paths)) return { valid, missing }
+    for (const path of paths) {
+      if (typeof path !== 'string' || path.length === 0) continue
+      try {
+        await access(path)
+        allowMediaPath(path)
+        valid.push(path)
+      } catch {
+        missing.push(path)
+      }
+    }
+    return { valid, missing }
+  })
+
+  ipcMain.handle('state:load', () => readPersistedState())
+
+  ipcMain.handle('state:save', (_event, state: unknown) => {
+    writePlaybackState(state)
+  })
+
+  ipcMain.on('state:save-sync', (event, state: unknown) => {
+    writePlaybackState(state)
+    event.returnValue = null
+  })
+
+  ipcMain.handle('settings:get', () => readSettings())
+
+  ipcMain.handle('settings:set', (_event, settings: unknown) => {
+    writeSettings(settings)
   })
 }

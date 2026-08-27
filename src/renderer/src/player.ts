@@ -7,6 +7,7 @@ export type PlayerEvent =
   | 'ended'
   | 'error'
   | 'volumechange'
+  | 'ratechange'
 
 type Listener = () => void
 
@@ -20,7 +21,8 @@ export class Player {
     loadedmetadata: [],
     ended: [],
     error: [],
-    volumechange: []
+    volumechange: [],
+    ratechange: []
   }
   private seekStep = DEFAULT_SEEK_STEP
 
@@ -33,6 +35,7 @@ export class Player {
     this.audio.addEventListener('ended', () => this.emit('ended'))
     this.audio.addEventListener('error', () => this.emit('error'))
     this.audio.addEventListener('volumechange', () => this.emit('volumechange'))
+    this.audio.addEventListener('ratechange', () => this.emit('ratechange'))
   }
 
   on(event: PlayerEvent, listener: Listener): () => void {
@@ -80,6 +83,7 @@ export class Player {
     this.audio.pause()
     this.audio.removeAttribute('src')
     this.audio.load()
+    this.emit('statechange')
   }
 
   seekBy(deltaSec: number): void {

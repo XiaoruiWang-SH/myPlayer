@@ -88,7 +88,10 @@ export function initPlayerBar(player: Player, actions: PlayerBarActions): Player
   }
 
   player.on('statechange', renderPlayState)
-  player.on('loadedmetadata', renderProgress)
+  player.on('loadedmetadata', () => {
+    renderPlayState()
+    renderProgress()
+  })
   player.on('volumechange', renderVolumeState)
   player.on('timeupdate', () => {
     const now = performance.now()

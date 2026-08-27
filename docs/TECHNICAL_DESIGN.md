@@ -123,6 +123,8 @@ const SHORTCUTS: Array<{ combo: string; action: Action }> = [
 
 使用 electron-store，schema：
 
+> electron-store 为 ESM-only 包，主进程产物是 CJS，因此在 `app.whenReady` 阶段用动态 `import()` 完成初始化；同步落盘通道依赖初始化完成后的实例。
+
 ```ts
 interface PersistedData {
   settings: {
@@ -142,8 +144,8 @@ interface PersistedData {
 
 **写入时机：**
 
-1. 应用退出前（`before-quit`）：渲染层通过 `state:save` 发送完整快照。
-2. 播放中每 5 秒防抖落盘一次 `currentTime`（崩溃保护，FR-22）。
+1. 窗口卸载时（`beforeunload`，覆盖关窗口与 ⌘Q 退出路径）：渲染层经 `sendSync('state:save-sync')` 同步发送完整快照，保证退出前写入完成。
+2. 播放中每 5 秒定期落盘一次 `currentTime`（基于 `timeupdate` 节流；崩溃保护，FR-22）。
 3. 设置变更、音量/循环模式变更即时落盘。
 
 **恢复流程（启动时）：** 渲染层初始化 → `state:load` 拉取快照 → 过滤失效文件（`fs.access` 校验放在主进程做一次，返回有效列表与被移除项）→ 恢复列表与各项状态 → 加载当前曲目但**保持暂停**。
@@ -191,17 +193,19 @@ interface MyPlayerBridge {
   allowPaths(paths: string[]): Promise<void>  // 拖拽路径登记进媒体白名单
   loadState(): Promise<PersistedData>
   saveState(state: PersistedData['playbackState']): Promise<void>
+  saveStateSync(state: PersistedData['playbackState']): void  // 窗口卸载时的同步落盘通道
   getSettings(): Promise<PersistedData['settings']>
   setSettings(s: PersistedData['settings']): Promise<void>
   filterExisting(paths: string[]): Promise<{ valid: string[]; missing: string[] }>
-  // on（主进程 → 渲染层事件，用于兜底媒体键方案）
-  onMediaCommand(cb: (cmd: 'play-pause' | 'next' | 'previous') => void): () => void
+  // on（主进程 → 渲染层事件）
+  onMediaCommand(cb: (cmd: 'play-pause' | 'next' | 'previous') => void): () => void  // 兜底媒体键方案
+  onOpenSettings(cb: () => void): () => void  // 菜单「设置…」入口
   // preload 工具
   getPathForFile(file: File): string
 }
 ```
 
-主进程侧用 `ipcMain.handle` 逐个注册，不开放通用 `fs` 通道。
+主进程侧用 `ipcMain.handle` 逐个注册，不开放通用 `fs` 通道。`saveStateSync` 走 `ipcRenderer.sendSync('state:save-sync')`（主进程用 `ipcMain.on` 接收）：渲染层在 `beforeunload` 时调用，保证退出路径上落盘可靠。
 
 ## 5. 安全配置
 
@@ -215,7 +219,7 @@ interface MyPlayerBridge {
 | `setWindowOpenHandler` | 拒绝所有新窗口 | 防止被内容劫持开窗 |
 | 导航 | `will-navigate` 阻止 | 同上 |
 
-应用无网络请求；打包时可考虑关闭不必要的默认菜单项（保留 About/Quit/编辑菜单用于输入框）。
+应用无网络请求；菜单保留 About/设置…/Quit/编辑菜单（编辑菜单用于输入框）。
 
 ## 6. 构建、打包与发布
 
@@ -247,6 +251,7 @@ myPlayer/
 │   │   ├── audio-utils.ts     # 纯函数（进度钳制、时间格式化、音量步进）
 │   │   ├── playlist-utils.ts  # 纯函数（MP3 过滤、去重键、循环模式前后首计算）
 │   │   ├── shortcut-utils.ts  # 纯函数（按键事件 → 快捷键组合串）
+│   │   ├── settings-utils.ts  # 纯函数（步长设置校验 1–120）
 │   │   └── *.test.ts          # 以上纯函数的 Vitest 单测
 │   ├── main/
 │   │   ├── index.ts          # 生命周期、窗口创建

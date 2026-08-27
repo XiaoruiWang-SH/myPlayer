@@ -67,6 +67,17 @@ export class Playlist {
     this.currentIndex = -1
   }
 
+  restore(paths: string[]): void {
+    this.items = paths.map((path) => ({
+      id: crypto.randomUUID(),
+      path,
+      name: trackDisplayName(path),
+      playable: true
+    }))
+    this.seen = new Set(paths.map(dedupeKey))
+    this.currentIndex = -1
+  }
+
   cycleLoopMode(): LoopMode {
     const order: LoopMode[] = ['list', 'single', 'sequential']
     this.loopMode = order[(order.indexOf(this.loopMode) + 1) % order.length]

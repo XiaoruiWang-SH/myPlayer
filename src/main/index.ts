@@ -1,8 +1,10 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { createMenu } from './menu'
+import { setupMediaKeys, teardownMediaKeys } from './media-keys'
 import { setupIpc } from './ipc'
 import { registerMediaScheme, setupMediaProtocol } from './protocol'
+import { initStore } from './store'
 
 registerMediaScheme()
 
@@ -35,15 +37,21 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await initStore()
   setupMediaProtocol()
   setupIpc()
   createMenu()
+  setupMediaKeys()
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('will-quit', () => {
+  teardownMediaKeys()
 })
 
 app.on('window-all-closed', () => {
