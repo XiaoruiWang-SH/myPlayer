@@ -42,7 +42,9 @@ macOS 本地音频播放器 —— 打开即播、键盘友好、没有多余功
 npm install
 npm run dev        # electron-vite dev，渲染层 HMR
 npm run typecheck  # tsc --noEmit
-npm run build      # electron-builder 打包
+npm run test       # Vitest 单元测试
+npm run build      # electron-vite 构建
+npm run dist       # 构建并用 electron-builder 打包
 ```
 
 要求 macOS 12 Monterey 及以上，同时支持 Apple Silicon 与 Intel。
