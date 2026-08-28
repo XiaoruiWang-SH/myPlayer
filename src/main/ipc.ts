@@ -12,7 +12,7 @@ import {
   writePlaybackState,
   writeSettings
 } from './store'
-import { getTranscript } from './transcript'
+import { deleteTranscriptCache, getTranscript } from './transcript'
 
 export function setupIpc(): void {
   ipcMain.handle('files:open', async (event) => {
@@ -65,9 +65,10 @@ export function setupIpc(): void {
     return renameLibraryFile(path, newName)
   })
 
-  ipcMain.handle('library:delete', async (_event, path: unknown) => {
+  ipcMain.handle('library:delete', async (_event, path: unknown, trackId: unknown) => {
     if (typeof path !== 'string' || path === '') throw new Error('参数无效')
     await deleteLibraryFile(path)
+    if (typeof trackId === 'string' && trackId !== '') await deleteTranscriptCache(trackId)
   })
 
   ipcMain.handle('state:load', () => readPersistedState())
@@ -102,8 +103,13 @@ export function setupIpc(): void {
     if (typeof filePath !== 'string' || filePath === '') {
       return { status: 'error', code: 'unknown', message: '无效的音频路径' }
     }
-    const force =
-      typeof options === 'object' && options !== null && (options as { force?: unknown }).force === true
-    return getTranscript(filePath, force)
+    const opts =
+      typeof options === 'object' && options !== null
+        ? (options as { id?: unknown; force?: unknown })
+        : {}
+    if (typeof opts.id !== 'string' || opts.id === '') {
+      return { status: 'error', code: 'unknown', message: '无效的曲目 ID' }
+    }
+    return getTranscript(filePath, { id: opts.id, force: opts.force === true })
   })
 }

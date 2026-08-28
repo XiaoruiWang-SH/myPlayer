@@ -70,11 +70,11 @@ export interface MyPlayerBridge {
   filterExisting(paths: string[]): Promise<{ valid: string[]; missing: string[] }>
   importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
   renameLibraryFile(path: string, newName: string): Promise<string>
-  deleteLibraryFile(path: string): Promise<void>
+  deleteLibraryFile(path: string, trackId: string): Promise<void>
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<ApiKeyStatus>
-  getTranscript(path: string, options?: { force?: boolean }): Promise<TranscriptResult>
+  getTranscript(path: string, options: { id: string; force?: boolean }): Promise<TranscriptResult>
   onMediaCommand(cb: (cmd: MediaCommand) => void): () => void
   onOpenSettings(cb: () => void): () => void
 }

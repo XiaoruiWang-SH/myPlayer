@@ -32,13 +32,3 @@ export function wordsToSegments(words: readonly TimedWord[]): TranscriptSegment[
   flush()
   return segments
 }
-
-export async function transcriptCacheKey(
-  filePath: string,
-  size: number,
-  mtimeMs: number
-): Promise<string> {
-  const data = new TextEncoder().encode(`${filePath}\n${size}\n${mtimeMs}`)
-  const digest = await crypto.subtle.digest('SHA-1', data)
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
-}

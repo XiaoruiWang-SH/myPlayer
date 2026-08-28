@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SEGMENT_GAP_SECONDS, transcriptCacheKey, wordsToSegments } from './transcript-utils'
+import { SEGMENT_GAP_SECONDS, wordsToSegments } from './transcript-utils'
 
 describe('wordsToSegments', () => {
   it('空输入返回空数组', () => {
@@ -65,20 +65,5 @@ describe('wordsToSegments', () => {
       { text: 'ending', start: 0.4, end: 0.9 },
     ])
     expect(segments).toEqual([{ start: 0, end: 0.9, text: 'no ending' }])
-  })
-})
-
-describe('transcriptCacheKey', () => {
-  it('相同输入产出稳定的 40 位十六进制键', async () => {
-    const key = await transcriptCacheKey('/music/a.mp3', 1234, 1700000000000)
-    expect(key).toMatch(/^[0-9a-f]{40}$/)
-    await expect(transcriptCacheKey('/music/a.mp3', 1234, 1700000000000)).resolves.toBe(key)
-  })
-
-  it('路径、大小、修改时间任一变化都会改变键', async () => {
-    const base = await transcriptCacheKey('/music/a.mp3', 1234, 1700000000000)
-    await expect(transcriptCacheKey('/music/b.mp3', 1234, 1700000000000)).resolves.not.toBe(base)
-    await expect(transcriptCacheKey('/music/a.mp3', 1235, 1700000000000)).resolves.not.toBe(base)
-    await expect(transcriptCacheKey('/music/a.mp3', 1234, 1700000000001)).resolves.not.toBe(base)
   })
 })

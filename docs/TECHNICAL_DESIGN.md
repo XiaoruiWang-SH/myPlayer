@@ -246,7 +246,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 | --- | --- |
 | 导入 `importToLibrary(sourcePaths)` | 逐个 `fs.copyFile` 拷贝进库；目标名冲突（库内已有同名，大小写不敏感）自动加数字后缀 `name-1.mp3`、`name-2.mp3`…；返回每个源文件的结果（成功 + 库内路径，或失败原因）。拷贝前校验源文件为 `.mp3` 且可读 |
 | 重命名 `renameLibraryFile(path, newName)` | 校验新名非空、不含 `/`、`.mp3` 结尾（缺则补）、不与库内其他文件重名；`fs.rename` 后返回新路径。仅允许操作库目录内的路径 |
-| 删除 `deleteLibraryFile(path)` | `fs.unlink` 删除库内副本，同时删除该曲目的转录缓存。仅允许操作库目录内的路径 |
+| 删除 `deleteLibraryFile(path, trackId)` | `fs.unlink` 删除库内副本，同时按曲目 `id` 删除对应转录缓存（`<trackId>.json`，不存在则忽略）。仅允许操作库目录内的路径 |
 
 **安全约束：** 三个操作统一做库目录前缀校验（`path.resolve` 后必须以库目录为前缀），拒绝任何越界路径。拷贝为异步操作，大文件（百兆级）耗时可达数秒：渲染层在导入期间显示「正在导入…」提示并允许继续操作其他功能，导入完成后再把新条目加入列表。
 
@@ -270,7 +270,7 @@ interface MyPlayerBridge {
   // 媒体库（v1.2）
   importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
   renameLibraryFile(path: string, newName: string): Promise<string>  // 返回新路径
-  deleteLibraryFile(path: string): Promise<void>
+  deleteLibraryFile(path: string, trackId: string): Promise<void>  // 同步删除该曲目的转录缓存
   // 转录（v1.1；v1.2 起 options 需带曲目 id 作为缓存键）
   getTranscript(path: string, options: { id: string; force?: boolean }): Promise<TranscriptResult>
   setDeepgramApiKey(key: string): Promise<void>
@@ -349,7 +349,7 @@ myPlayer/
 │   │   ├── playlist-utils.ts  # 纯函数（MP3 过滤、去重键、循环模式前后首计算）
 │   │   ├── shortcut-utils.ts  # 纯函数（按键事件 → 快捷键组合串）
 │   │   ├── settings-utils.ts  # 纯函数（步长设置校验 1–120）
-│   │   ├── transcript-utils.ts # v1.1 纯函数（词→句聚合、缓存键）
+│   │   ├── transcript-utils.ts # v1.1 纯函数（词→句聚合；v1.2 起缓存按曲目 id 命名，无需哈希键）
 │   │   ├── library-utils.ts   # v1.2 纯函数（重名校验与后缀、重命名校验、已播放阈值判定）
 │   │   └── *.test.ts          # 以上纯函数的 Vitest 单测
 │   ├── main/

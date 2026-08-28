@@ -1,7 +1,7 @@
 import { app } from 'electron'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { transcriptCacheKey, wordsToSegments, type TimedWord } from '../shared/transcript-utils'
+import { wordsToSegments, type TimedWord } from '../shared/transcript-utils'
 import type { TranscriptResult, TranscriptSegment } from '../shared/types'
 import { getDecryptedApiKey } from './store'
 
@@ -9,6 +9,8 @@ const DEEPGRAM_URL =
   'https://api.deepgram.com/v1/listen?model=nova-3&language=en&smart_format=true'
 const TRANSCRIBE_TIMEOUT_MS = 5 * 60 * 1000
 const CACHE_VERSION = 1
+// 缓存文件名即曲目 id；限制字符集防止路径穿越
+const TRACK_ID_PATTERN = /^[A-Za-z0-9-]+$/
 
 interface DeepgramWord {
   word: string
@@ -100,11 +102,21 @@ interface CachedTranscript {
   segments: TranscriptSegment[]
 }
 
-async function cacheFileFor(filePath: string, size: number, mtimeMs: number): Promise<string> {
-  const dir = path.join(app.getPath('userData'), 'transcripts')
-  await mkdir(dir, { recursive: true })
-  const key = await transcriptCacheKey(filePath, size, mtimeMs)
-  return path.join(dir, `${key}.json`)
+function transcriptsDir(): string {
+  return path.join(app.getPath('userData'), 'transcripts')
+}
+
+function cacheFileFor(trackId: string): string {
+  return path.join(transcriptsDir(), `${trackId}.json`)
+}
+
+export async function deleteTranscriptCache(trackId: string): Promise<void> {
+  if (!TRACK_ID_PATTERN.test(trackId)) return
+  try {
+    await unlink(cacheFileFor(trackId))
+  } catch {
+    // 缓存不存在视为已清理
+  }
 }
 
 async function readCache(cacheFile: string): Promise<TranscriptSegment[] | null> {
@@ -122,6 +134,7 @@ async function writeCache(
   source: CachedTranscript['source'],
   segments: TranscriptSegment[]
 ): Promise<void> {
+  await mkdir(transcriptsDir(), { recursive: true })
   const payload: CachedTranscript = {
     version: CACHE_VERSION,
     transcribedAt: new Date().toISOString(),
@@ -133,20 +146,31 @@ async function writeCache(
 
 const inFlight = new Map<string, Promise<TranscriptResult>>()
 
-export function getTranscript(filePath: string, force: boolean): Promise<TranscriptResult> {
+export function getTranscript(
+  filePath: string,
+  options: { id: string; force?: boolean }
+): Promise<TranscriptResult> {
+  const { id, force = false } = options
+  if (!TRACK_ID_PATTERN.test(id)) {
+    return Promise.resolve(errorResult('unknown', '无效的曲目 ID'))
+  }
   if (!force) {
-    const existing = inFlight.get(filePath)
+    const existing = inFlight.get(id)
     if (existing) return existing
   }
-  const task = runTranscription(filePath, force)
-  inFlight.set(filePath, task)
+  const task = runTranscription(filePath, id, force)
+  inFlight.set(id, task)
   void task.finally(() => {
-    if (inFlight.get(filePath) === task) inFlight.delete(filePath)
+    if (inFlight.get(id) === task) inFlight.delete(id)
   })
   return task
 }
 
-async function runTranscription(filePath: string, force: boolean): Promise<TranscriptResult> {
+async function runTranscription(
+  filePath: string,
+  trackId: string,
+  force: boolean
+): Promise<TranscriptResult> {
   let fileStat
   try {
     fileStat = await stat(filePath)
@@ -155,7 +179,7 @@ async function runTranscription(filePath: string, force: boolean): Promise<Trans
   }
   const source = { path: filePath, size: fileStat.size, mtimeMs: fileStat.mtimeMs }
 
-  const cacheFile = await cacheFileFor(filePath, source.size, source.mtimeMs)
+  const cacheFile = cacheFileFor(trackId)
   if (!force) {
     const cached = await readCache(cacheFile)
     if (cached) return { status: 'ok', segments: cached, fromCache: true }

@@ -5,7 +5,7 @@ import type { ImportResult, PlaybackState } from '../../shared/types'
 import { DurationProber } from './duration-prober'
 import { initMediaSession } from './media-session'
 import { Player } from './player'
-import { Playlist } from './playlist'
+import { Playlist, type Track } from './playlist'
 import { initShortcuts, type ShortcutAction } from './shortcuts'
 import { initPlayerBar } from './ui/player-bar'
 import { renderPlaylist } from './ui/playlist-view'
@@ -226,12 +226,21 @@ async function renameTrack(index: number, rawName: string): Promise<void> {
       player.seekTo(position)
       if (!wasPaused) await player.play()
       mediaSession.updateTrack(track)
-      transcriptForPath = newPath
     }
     persistNow()
     render()
   } catch (err) {
     showToast(err instanceof Error ? err.message : '重命名失败')
+  }
+}
+
+async function deleteLibraryTracks(tracks: Track[]): Promise<void> {
+  for (const track of tracks) {
+    try {
+      await window.myPlayer.deleteLibraryFile(track.path, track.id)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '文件删除失败')
+    }
   }
 }
 
@@ -243,17 +252,20 @@ function removeCurrent(): void {
     mediaSession.updateTrack(null)
     resetTranscript()
   }
+  void deleteLibraryTracks([result.removed])
   persistNow()
   render()
 }
 
 function clearList(): void {
   if (playlist.items.length === 0) return
+  const removed = [...playlist.items]
   playlist.clear()
   failedIds.clear()
   player.unload()
   mediaSession.updateTrack(null)
   resetTranscript()
+  void deleteLibraryTracks(removed)
   persistNow()
   render()
 }
@@ -290,14 +302,14 @@ window.myPlayer.onOpenSettings(() => settingsDialog.open())
 
 // ---- 转录文稿（FR-25~28）----
 
-let transcriptForPath: string | null = null
+let transcriptForId: string | null = null
 let transcriptGeneration = 0
 
 const transcriptView = initTranscriptView({
   getCurrentTime: () => player.currentTime,
   onSeek: (time) => player.seekTo(time),
   onRetry: () => {
-    transcriptForPath = null
+    transcriptForId = null
     void ensureTranscript()
   },
   onRetranscribe: () => void ensureTranscript(true),
@@ -307,13 +319,13 @@ const transcriptView = initTranscriptView({
 async function ensureTranscript(force = false): Promise<void> {
   const track = playlist.current
   if (!track) return
-  if (!force && transcriptForPath === track.path) return
-  transcriptForPath = track.path
+  if (!force && transcriptForId === track.id) return
+  transcriptForId = track.id
   const generation = ++transcriptGeneration
   transcriptView.showLoading()
-  const result = await window.myPlayer.getTranscript(track.path, { force })
+  const result = await window.myPlayer.getTranscript(track.path, { id: track.id, force })
   // 切歌后返回的过期结果直接丢弃（技术文档 §3.8）
-  if (generation !== transcriptGeneration || playlist.current?.path !== track.path) return
+  if (generation !== transcriptGeneration || playlist.current?.id !== track.id) return
   switch (result.status) {
     case 'ok':
       transcriptView.showSegments(result.segments)
@@ -331,7 +343,7 @@ async function ensureTranscript(force = false): Promise<void> {
 
 function resetTranscript(): void {
   transcriptGeneration++
-  transcriptForPath = null
+  transcriptForId = null
   transcriptView.showEmpty()
 }
 
