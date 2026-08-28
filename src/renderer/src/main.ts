@@ -1,6 +1,6 @@
 import { VOLUME_STEP, adjustVolume } from '../../shared/audio-utils'
 import { isPlayed } from '../../shared/library-utils'
-import { isMp3Path, nextTrackIndex, prevTrackIndex } from '../../shared/playlist-utils'
+import { isMp3Path, nextTrackIndex, prevTrackIndex, trackDisplayName } from '../../shared/playlist-utils'
 import type { ImportResult, PlaybackState } from '../../shared/types'
 import { DurationProber } from './duration-prober'
 import { initMediaSession } from './media-session'
@@ -25,7 +25,13 @@ const removeBtn = document.getElementById('remove-btn') as HTMLButtonElement
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement
 
 function render(): void {
-  renderPlaylist(playlist, listEl, hintEl, (index) => void playIndex(index))
+  renderPlaylist(
+    playlist,
+    listEl,
+    hintEl,
+    (index) => void playIndex(index),
+    (index, newName) => void renameTrack(index, newName)
+  )
   removeBtn.disabled = playlist.currentIndex < 0
   clearBtn.disabled = playlist.items.length === 0
 }
@@ -202,6 +208,31 @@ async function addFiles(paths: string[]): Promise<void> {
 
 async function openFiles(): Promise<void> {
   await addFiles(await window.myPlayer.openFiles())
+}
+
+async function renameTrack(index: number, rawName: string): Promise<void> {
+  const track = playlist.items[index]
+  if (!track) return
+  try {
+    const newPath = await window.myPlayer.renameLibraryFile(track.path, rawName)
+    track.path = newPath
+    track.name = trackDisplayName(newPath)
+    await window.myPlayer.allowPaths([newPath])
+    if (index === playlist.currentIndex && player.hasSource) {
+      // media:// 白名单按路径生效，改名后必须重新加载才能继续播放
+      const wasPaused = player.paused
+      const position = player.currentTime
+      await player.load(newPath)
+      player.seekTo(position)
+      if (!wasPaused) await player.play()
+      mediaSession.updateTrack(track)
+      transcriptForPath = newPath
+    }
+    persistNow()
+    render()
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '重命名失败')
+  }
 }
 
 function removeCurrent(): void {

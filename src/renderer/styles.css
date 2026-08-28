@@ -205,6 +205,18 @@ body {
   white-space: nowrap;
 }
 
+.rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #0a84ff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  outline: none;
+}
+
 .track-duration {
   flex: none;
   font-variant-numeric: tabular-nums;

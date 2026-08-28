@@ -5,7 +5,8 @@ export function renderPlaylist(
   playlist: Playlist,
   listEl: HTMLElement,
   hintEl: HTMLElement,
-  onSelect: (index: number) => void
+  onSelect: (index: number) => void,
+  onRename: (index: number, newName: string) => void
 ): void {
   listEl.replaceChildren()
   const empty = playlist.items.length === 0
@@ -37,8 +38,48 @@ export function renderPlaylist(
         ? formatTime(track.duration)
         : '…'
 
+    // 单击选中延迟触发，给双击重命名留出取消窗口；否则单击引发的重渲染会销毁行元素导致 dblclick 丢失
+    let clickTimer: ReturnType<typeof setTimeout> | undefined
+    li.addEventListener('click', () => {
+      if (li.querySelector('.rename-input')) return
+      clearTimeout(clickTimer)
+      clickTimer = setTimeout(() => onSelect(index), 200)
+    })
+    li.addEventListener('dblclick', () => {
+      clearTimeout(clickTimer)
+      beginRename()
+    })
+
+    function beginRename(): void {
+      if (li.querySelector('.rename-input')) return
+      const input = document.createElement('input')
+      input.className = 'rename-input'
+      input.value = track.name
+      input.spellcheck = false
+      let finished = false
+      const finish = (): void => {
+        if (finished) return
+        finished = true
+        input.replaceWith(name)
+      }
+      input.addEventListener('keydown', (event) => {
+        // 阻止冒泡到 window 级快捷键（编辑框内方向键不应触发快进/音量）
+        event.stopPropagation()
+        if (event.key === 'Enter') {
+          const value = input.value
+          finish()
+          onRename(index, value)
+        } else if (event.key === 'Escape') {
+          finish()
+        }
+      })
+      input.addEventListener('blur', finish)
+      name.replaceWith(input)
+      input.focus()
+      input.select()
+    }
+
     li.append(marker, name, duration)
-    li.addEventListener('click', () => onSelect(index))
     listEl.appendChild(li)
   })
 }
