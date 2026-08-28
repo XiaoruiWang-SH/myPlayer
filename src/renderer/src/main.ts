@@ -1,4 +1,5 @@
 import { VOLUME_STEP, adjustVolume } from '../../shared/audio-utils'
+import { isPlayed } from '../../shared/library-utils'
 import { isMp3Path, nextTrackIndex, prevTrackIndex } from '../../shared/playlist-utils'
 import type { ImportResult, PlaybackState } from '../../shared/types'
 import { DurationProber } from './duration-prober'
@@ -56,7 +57,7 @@ function snapshotState(): PlaybackState {
       path: track.path,
       importedFrom: track.importedFrom,
       addedAt: track.addedAt,
-      position: track === current ? player.currentTime : track.position,
+      position: track === current && !track.played ? player.currentTime : track.position,
       played: track.played
     })),
     currentIndex: playlist.currentIndex,
@@ -72,6 +73,16 @@ function persistNow(): void {
   if (restoring) return
   void window.myPlayer.saveState(snapshotState())
 }
+
+player.on('timeupdate', () => {
+  const track = playlist.current
+  if (track && !track.played && isPlayed(player.currentTime, player.duration)) {
+    track.played = true
+    track.position = 0
+    render()
+    persistNow()
+  }
+})
 
 player.on('timeupdate', () => {
   if (player.paused) return
@@ -92,11 +103,14 @@ window.addEventListener('beforeunload', () => {
 async function playIndex(index: number): Promise<void> {
   const track = playlist.items[index]
   if (!track) return
+  const prev = playlist.current
+  if (prev && prev !== track && !prev.played) prev.position = player.currentTime
   playlist.currentIndex = index
   mediaSession.updateTrack(track)
   render()
   try {
     await player.load(track.path)
+    if (track.position > 0) player.seekTo(track.position)
     await player.play()
     failedIds.clear()
     persistNow()
@@ -119,6 +133,13 @@ function findNextPlayable(from: number): number | null {
 }
 
 player.on('ended', () => {
+  const track = playlist.current
+  if (track && !track.played) {
+    track.played = true
+    track.position = 0
+    render()
+    persistNow()
+  }
   if (playlist.loopMode === 'single') {
     player.seekTo(0)
     void player.play()
@@ -328,7 +349,7 @@ async function restoreState(): Promise<void> {
           mediaSession.updateTrack(track)
           try {
             await player.load(track.path)
-            player.seekTo(persisted.playbackState.currentTime)
+            player.seekTo(track.position)
           } catch {
             // 加载失败交给用户手动播放时的错误处理
           }

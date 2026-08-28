@@ -181,6 +181,10 @@ body {
   background: rgba(10, 132, 255, 0.18);
 }
 
+.track.played:not(.current) {
+  opacity: 0.5;
+}
+
 .track-marker {
   flex: none;
   width: 22px;

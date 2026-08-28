@@ -18,6 +18,7 @@ export function renderPlaylist(
     li.className = 'track'
     if (index === playlist.currentIndex) li.classList.add('current')
     if (!track.playable) li.classList.add('unplayable')
+    if (track.played) li.classList.add('played')
 
     const marker = document.createElement('span')
     marker.className = 'track-marker'
