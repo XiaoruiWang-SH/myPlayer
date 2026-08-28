@@ -21,6 +21,17 @@ export interface PersistedData {
   playbackState: PlaybackState
 }
 
+export interface TranscriptSegment {
+  start: number
+  end: number
+  text: string
+}
+
+export type TranscriptResult =
+  | { status: 'ok'; segments: TranscriptSegment[]; fromCache: boolean }
+  | { status: 'no-key' }
+  | { status: 'error'; code: 'unauthorized' | 'quota' | 'network' | 'unknown'; message: string }
+
 export interface MyPlayerBridge {
   openFiles(): Promise<string[]>
   allowPaths(paths: string[]): Promise<void>
