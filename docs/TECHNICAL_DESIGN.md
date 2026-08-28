@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.2（v1.1 转录模块已实现并验收，2026-08-28） |
-| 日期 | 2026-08-27 |
+| 文档版本 | v0.3（新增 v1.2 媒体库与列表状态设计，待评审） |
+| 日期 | 2026-08-28 |
 | 关联文档 | [PRD.md](./PRD.md) |
 | 技术栈 | Electron + TypeScript + Vite |
 
@@ -34,7 +34,8 @@
 │  ├─ 持久化（electron-store：设置 + 播放状态）              │
 │  ├─ 应用菜单（含「设置…」入口）                            │
 │  ├─ 媒体键兜底（globalShortcut，备用方案）                 │
-│  └─ 转录服务（v1.1：Deepgram 请求 / 缓存 / 密钥加密）      │
+│  ├─ 转录服务（v1.1：Deepgram 请求 / 缓存 / 密钥加密）      │
+│  └─ 媒体库管理（v1.2：专属目录导入拷贝 / 重命名 / 删除）   │
 └───────────────▲─────────────────────────────────────────┘
                 │ IPC（contextBridge 暴露，白名单）
 ┌───────────────┴─────────────────────────────────────────┐
@@ -82,10 +83,14 @@ class Player {
 
 ```ts
 interface Track {
-  id: string            // 生成的一次性 id
-  path: string          // 绝对路径
+  id: string            // 稳定 id（crypto.randomUUID），进度/文稿缓存的关联键
+  path: string          // 绝对路径（v1.2 起恒为专属库内路径）
   name: string          // 文件名（不含扩展名）
   duration?: number     // 异步探测后填充
+  importedFrom?: string // v1.2：导入时的源文件路径，用于源文件级去重
+  addedAt: number       // v1.2：导入时间（Date.now），列表固定按此排序
+  position: number      // v1.2：该条目的播放进度（秒），默认 0
+  played: boolean       // v1.2：是否已听完，默认 false
 }
 
 interface PlaylistState {
@@ -95,9 +100,11 @@ interface PlaylistState {
 }
 ```
 
-- 添加时按 `path` 去重；非 `.mp3` 后缀直接拒绝（大小写不敏感）。
+- 添加时按 `path` 去重（v1.2 起另按 `importedFrom` 去重，防止同一源文件重复导入产生多份副本）；非 `.mp3` 后缀直接拒绝（大小写不敏感）。
+- 列表顺序固定为导入先后（按 `addedAt`），不提供排序/拖拽入口（FR-35）。
 - 时长探测：用一个隐藏 `<audio preload="metadata">` 串行探测，避免同时创建大量元素；探测失败标记为不可播放。
 - `ended` 处理逻辑：单曲循环 → 重播当前；列表循环 → 下一首（末尾回绕）；顺序播放 → 下一首，最后一首则停止。
+- v1.2 已播放判定：`ended` 事件或 `currentTime >= duration * 0.98` 时 `played = true` 且 `position = 0`；切歌时把当前 `currentTime` 写回旧条目的 `position`，切入新条目后按其 `position` 续播。
 
 ### 3.3 快捷键管理器（renderer）
 
@@ -130,6 +137,7 @@ const SHORTCUTS: Array<{ combo: string; action: Action }> = [
 
 ```ts
 interface PersistedData {
+  version: 2              // v1.2：schema 版本号
   settings: {
     seekStep: number        // 1–120，默认 5
   }
@@ -137,7 +145,7 @@ interface PersistedData {
     deepgramApiKey?: string // safeStorage 加密后的密文（base64）
   }
   playbackState: {
-    playlist: string[]      // 文件路径数组（含顺序）
+    playlist: PersistedTrack[]  // v1.2 起为对象数组（v1.1 及以前为路径字符串数组）
     currentIndex: number
     currentTime: number
     volume: number          // 0–100
@@ -146,7 +154,19 @@ interface PersistedData {
     loopMode: 'list' | 'single' | 'sequential'
   }
 }
+
+// v1.2：曲目持久化结构（不含运行时字段 duration/playable）
+interface PersistedTrack {
+  id: string
+  path: string          // 专属库内绝对路径
+  importedFrom?: string // 源文件路径（去重用）
+  addedAt: number
+  position: number      // 秒
+  played: boolean
+}
 ```
+
+**schema 升级策略（v1.2，FR-36）：** 主进程初始化时检查 `version`；小于 2（或缺失，即 v1.1 及以前的数据）时，重置 `playbackState` 为空（列表清空、`currentIndex = -1`、`currentTime = 0`，保留设置、音量与密钥），并清空 `userData/transcripts/` 旧缓存（旧缓存键为路径哈希，与新的曲目 ID 键不兼容），然后写入 `version: 2`。
 
 **写入时机：**
 
@@ -203,7 +223,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 
 **词 → 句子聚合（shared 纯函数，可单测）：** 顺序累积词语，遇到句末标点（`. ? ! …`）或相邻词时间间隔 > 2 秒时收束为一个片段，产出 `TranscriptSegment { start, end, text }`。
 
-**缓存：** 目录 `userData/transcripts/`；缓存键 = `路径 + 大小 + mtime` 拼接后的 SHA-1，文件名即键；「重新转录」（`force`）跳过读缓存并在成功后覆盖写入。
+**缓存：** 目录 `userData/transcripts/`。v1.1 缓存键 = `路径 + 大小 + mtime` 拼接后的 SHA-1；**v1.2 起改为曲目稳定 `id`**（渲染层调用 `getTranscript` 时随请求传入），使媒体库导入、重命名都不失效，文件名即 `<id>.json`；删除列表条目时主进程同步删除对应缓存文件。「重新转录」（`force`）跳过读缓存并在成功后覆盖写入。
 
 **密钥存储：** 设置弹窗新增 Deepgram 密钥区（填入/替换/清除，界面仅显示掩码）；`safeStorage.encryptString` 加密后写入 `secrets.deepgramApiKey`，仅在发起请求时解密，永不下发到渲染层。
 
@@ -218,6 +238,20 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 
 所有错误只影响文稿面板（显示错误态 + 重试入口），不影响播放。
 
+### 3.9 媒体库模块（v1.2，main）
+
+`main/library.ts` 集中管理专属目录 `~/音乐/myPlayer`（`path.join(app.getPath('music'), 'myPlayer')`，不存在则递归创建）：
+
+| 操作 | 行为 |
+| --- | --- |
+| 导入 `importToLibrary(sourcePaths)` | 逐个 `fs.copyFile` 拷贝进库；目标名冲突（库内已有同名，大小写不敏感）自动加数字后缀 `name-1.mp3`、`name-2.mp3`…；返回每个源文件的结果（成功 + 库内路径，或失败原因）。拷贝前校验源文件为 `.mp3` 且可读 |
+| 重命名 `renameLibraryFile(path, newName)` | 校验新名非空、不含 `/`、`.mp3` 结尾（缺则补）、不与库内其他文件重名；`fs.rename` 后返回新路径。仅允许操作库目录内的路径 |
+| 删除 `deleteLibraryFile(path)` | `fs.unlink` 删除库内副本，同时删除该曲目的转录缓存。仅允许操作库目录内的路径 |
+
+**安全约束：** 三个操作统一做库目录前缀校验（`path.resolve` 后必须以库目录为前缀），拒绝任何越界路径。拷贝为异步操作，大文件（百兆级）耗时可达数秒：渲染层在导入期间显示「正在导入…」提示并允许继续操作其他功能，导入完成后再把新条目加入列表。
+
+**渲染层流程变化：** `添加文件` 由「登记白名单 + 入列表」改为「调 `importToLibrary` → 成功后用库内路径登记白名单 + 入列表（生成 `id`、记录 `importedFrom`/`addedAt`）」。去重在渲染层完成：已有条目的 `importedFrom` 与源路径相同则跳过并提示（FR-32）。
+
 ## 4. IPC 接口
 
 全部通过 `contextBridge` 暴露在 `window.myPlayer` 上，共享类型定义在 `src/shared/types.ts`：
@@ -226,15 +260,19 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 interface MyPlayerBridge {
   // invoke（请求-响应）
   openFiles(): Promise<string[]>
-  allowPaths(paths: string[]): Promise<void>  // 拖拽路径登记进媒体白名单
+  allowPaths(paths: string[]): Promise<void>  // 路径登记进媒体白名单（导入成功后对库内路径调用）
   loadState(): Promise<Omit<PersistedData, 'secrets'>>
   saveState(state: PersistedData['playbackState']): Promise<void>
   saveStateSync(state: PersistedData['playbackState']): void  // 窗口卸载时的同步落盘通道
   getSettings(): Promise<PersistedData['settings']>
   setSettings(s: PersistedData['settings']): Promise<void>
   filterExisting(paths: string[]): Promise<{ valid: string[]; missing: string[] }>
-  // 转录（v1.1）
-  getTranscript(path: string, options?: { force?: boolean }): Promise<TranscriptResult>
+  // 媒体库（v1.2）
+  importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
+  renameLibraryFile(path: string, newName: string): Promise<string>  // 返回新路径
+  deleteLibraryFile(path: string): Promise<void>
+  // 转录（v1.1；v1.2 起 options 需带曲目 id 作为缓存键）
+  getTranscript(path: string, options: { id: string; force?: boolean }): Promise<TranscriptResult>
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<{ configured: boolean; maskedKey: string | null }>
@@ -244,6 +282,11 @@ interface MyPlayerBridge {
   // preload 工具
   getPathForFile(file: File): string
 }
+
+// v1.2
+type ImportResult =
+  | { sourcePath: string; ok: true; libraryPath: string }
+  | { sourcePath: string; ok: false; reason: string }
 ```
 
 转录相关类型（同置于 `src/shared/types.ts`）：
@@ -272,6 +315,8 @@ type TranscriptResult =
 | 导航 | `will-navigate` 阻止 | 同上 |
 
 v1.0 应用无网络请求；v1.1 起唯一网络出口为主进程在用户已配置密钥时对 `api.deepgram.com` 的转录请求（渲染层无任何直连外网路径）。菜单保留 About/设置…/Quit/编辑菜单（编辑菜单用于输入框）。
+
+v1.2 媒体库的导入/重命名/删除仅允许作用于专属库目录内的路径（主进程前缀校验），删除仅限 `fs.unlink` 单个文件，不开放目录级操作；`media://` 白名单机制不变（导入成功后对库内路径登记）。
 
 ## 6. 构建、打包与发布
 
@@ -305,6 +350,7 @@ myPlayer/
 │   │   ├── shortcut-utils.ts  # 纯函数（按键事件 → 快捷键组合串）
 │   │   ├── settings-utils.ts  # 纯函数（步长设置校验 1–120）
 │   │   ├── transcript-utils.ts # v1.1 纯函数（词→句聚合、缓存键）
+│   │   ├── library-utils.ts   # v1.2 纯函数（重名校验与后缀、重命名校验、已播放阈值判定）
 │   │   └── *.test.ts          # 以上纯函数的 Vitest 单测
 │   ├── main/
 │   │   ├── index.ts          # 生命周期、窗口创建
@@ -313,7 +359,8 @@ myPlayer/
 │   │   ├── store.ts          # electron-store 封装
 │   │   ├── menu.ts           # 应用菜单
 │   │   ├── media-keys.ts     # globalShortcut 兜底方案（默认关闭）
-│   │   └── transcript.ts     # v1.1 Deepgram 请求 / 缓存 / 密钥（唯一网络出口）
+│   │   ├── transcript.ts     # v1.1 Deepgram 请求 / 缓存 / 密钥（唯一网络出口）
+│   │   └── library.ts        # v1.2 专属媒体库（导入拷贝 / 重命名 / 删除）
 │   ├── preload/
 │   │   └── index.ts          # contextBridge 暴露 window.myPlayer
 │   └── renderer/
@@ -356,6 +403,9 @@ myPlayer/
 | Deepgram 服务不可用 / 定价调整（v1.1） | 转录不可用或费用变化 | 转录集中在 `main/transcript.ts`，可整体替换为其他 ASR；转录失败不影响播放 |
 | 长音频上传耗时与内存（v1.1） | 1 小时音频约 30–80MB，上传期间有等待 | 目标场景 ≤1 小时，整文件上传可接受；5 分钟超时 + 「正在转录中…」状态 + 缓存消除重复等待 |
 | API 密钥泄露（v1.1） | Deepgram 账户被盗用 | `safeStorage` 加密落盘、密钥不进渲染层、支持一键清除；密钥仅用于对 Deepgram 的请求头 |
+| 媒体库副本使磁盘占用翻倍（v1.2） | 大播客文件占用可观 | 导入即用户显式动作；删除列表条目同步删副本；文档明示专属目录位置便于用户自查 |
+| 大文件导入拷贝耗时（v1.2） | 添加后列表出现延迟 | 拷贝异步进行 + 「正在导入…」提示；完成后才入列表，避免指向不存在的路径 |
+| v1.2 升级清空旧列表（v1.2） | 用户需重新导入 | 用户已拍板「清空重来」；首次启动保留设置与密钥，仅清列表与失效的旧转录缓存 |
 
 ## 10. 里程碑
 
@@ -366,3 +416,4 @@ myPlayer/
 | M3 设置与记忆 | 设置弹窗、步长自定义、状态持久化与恢复、媒体键（含兜底验证） | FR-16~24 |
 | M4 打磨与发布 | 错误处理、深色模式、打包 dmg、按验收清单回归 | 全部验收标准 |
 | M5 转录文稿（v1.1） | 密钥管理、Deepgram 接入与缓存、左右分栏布局、文稿同步高亮与点击跳转 | FR-25~31 |
+| M6 媒体库与列表状态（v1.2） | 专属库导入/重命名/删除、每首进度与已播放状态、持久化 schema v2、转录缓存改按曲目 ID | FR-32~36 |
