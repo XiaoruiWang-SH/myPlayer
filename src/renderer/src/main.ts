@@ -49,8 +49,16 @@ let restoring = true
 let lastProgressSave = 0
 
 function snapshotState(): PlaybackState {
+  const current = playlist.current
   return {
-    playlist: playlist.items.map((track) => track.path),
+    playlist: playlist.items.map((track) => ({
+      id: track.id,
+      path: track.path,
+      importedFrom: track.importedFrom,
+      addedAt: track.addedAt,
+      position: track === current ? player.currentTime : track.position,
+      played: track.played
+    })),
     currentIndex: playlist.currentIndex,
     currentTime: player.currentTime,
     volume: player.volumePercent,
@@ -294,22 +302,22 @@ async function restoreState(): Promise<void> {
     playlist.loopMode = persisted.playbackState.loopMode
     playerBar.updateLoopMode(playlist.loopMode)
 
-    const paths = persisted.playbackState.playlist
-    if (paths.length > 0) {
-      const { valid, missing } = await window.myPlayer.filterExisting(paths)
+    const tracks = persisted.playbackState.playlist
+    if (tracks.length > 0) {
+      const { valid, missing } = await window.myPlayer.filterExisting(tracks.map((track) => track.path))
       if (missing.length > 0) showToast(`已跳过 ${missing.length} 个不再存在的文件`)
       if (valid.length > 0) {
         const validSet = new Set(valid)
-        const survivors = paths
-          .map((path, index) => ({ path, index }))
-          .filter((entry) => validSet.has(entry.path))
-        playlist.restore(valid)
+        const survivorsWithIndex = tracks
+          .map((track, index) => ({ track, index }))
+          .filter((entry) => validSet.has(entry.track.path))
+        playlist.restoreTracks(survivorsWithIndex.map((entry) => entry.track))
 
         const oldIndex = persisted.playbackState.currentIndex
         let newIndex = -1
         if (oldIndex >= 0) {
-          const pos = survivors.findIndex((entry) => entry.index >= oldIndex)
-          newIndex = pos >= 0 ? pos : survivors.length - 1
+          const pos = survivorsWithIndex.findIndex((entry) => entry.index >= oldIndex)
+          newIndex = pos >= 0 ? pos : survivorsWithIndex.length - 1
         }
         playlist.currentIndex = newIndex
         prober.enqueue(playlist.items)

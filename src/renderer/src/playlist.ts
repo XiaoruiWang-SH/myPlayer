@@ -1,5 +1,5 @@
 import { dedupeKey, trackDisplayName } from '../../shared/playlist-utils'
-import type { LoopMode } from '../../shared/types'
+import type { LoopMode, PersistedTrack } from '../../shared/types'
 
 export interface Track {
   id: string
@@ -78,17 +78,21 @@ export class Playlist {
     this.currentIndex = -1
   }
 
-  restore(paths: string[]): void {
-    this.items = paths.map((path) => ({
-      id: crypto.randomUUID(),
-      path,
-      name: trackDisplayName(path),
+  restoreTracks(tracks: PersistedTrack[]): void {
+    this.items = tracks.map((track) => ({
+      id: track.id,
+      path: track.path,
+      name: trackDisplayName(track.path),
       playable: true,
-      addedAt: Date.now(),
-      position: 0,
-      played: false
+      importedFrom: track.importedFrom,
+      addedAt: track.addedAt,
+      position: track.position,
+      played: track.played
     }))
-    this.seen = new Set(paths.map(dedupeKey))
+    this.seen = new Set(tracks.map((track) => dedupeKey(track.path)))
+    this.seenSources = new Set(
+      tracks.filter((track) => track.importedFrom).map((track) => dedupeKey(track.importedFrom as string))
+    )
     this.currentIndex = -1
   }
 

@@ -16,7 +16,7 @@ export interface ApiKeyStatus {
 }
 
 export interface PlaybackState {
-  playlist: string[]
+  playlist: PersistedTrack[]
   currentIndex: number
   currentTime: number
   volume: number
@@ -26,6 +26,7 @@ export interface PlaybackState {
 }
 
 export interface PersistedData {
+  version?: number
   settings: Settings
   secrets: Secrets
   playbackState: PlaybackState
