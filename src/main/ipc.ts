@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { access } from 'node:fs/promises'
 import type { TranscriptResult } from '../shared/types'
+import { deleteLibraryFile, importToLibrary, renameLibraryFile } from './library'
 import { allowMediaPath } from './protocol'
 import {
   clearDeepgramApiKey,
@@ -51,6 +52,22 @@ export function setupIpc(): void {
       }
     }
     return { valid, missing }
+  })
+
+  ipcMain.handle('library:import', async (_event, paths: unknown) => {
+    if (!Array.isArray(paths)) return []
+    const sourcePaths = paths.filter((p): p is string => typeof p === 'string' && p.length > 0)
+    return importToLibrary(sourcePaths)
+  })
+
+  ipcMain.handle('library:rename', async (_event, path: unknown, newName: unknown) => {
+    if (typeof path !== 'string' || typeof newName !== 'string') throw new Error('参数无效')
+    return renameLibraryFile(path, newName)
+  })
+
+  ipcMain.handle('library:delete', async (_event, path: unknown) => {
+    if (typeof path !== 'string' || path === '') throw new Error('参数无效')
+    await deleteLibraryFile(path)
   })
 
   ipcMain.handle('state:load', () => readPersistedState())

@@ -67,6 +67,9 @@ export interface MyPlayerBridge {
   getSettings(): Promise<Settings>
   setSettings(settings: Settings): Promise<void>
   filterExisting(paths: string[]): Promise<{ valid: string[]; missing: string[] }>
+  importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
+  renameLibraryFile(path: string, newName: string): Promise<string>
+  deleteLibraryFile(path: string): Promise<void>
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<ApiKeyStatus>
