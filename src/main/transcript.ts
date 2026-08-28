@@ -1,10 +1,14 @@
-import { readFile } from 'node:fs/promises'
-import { wordsToSegments, type TimedWord } from '../shared/transcript-utils'
+import { app } from 'electron'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { transcriptCacheKey, wordsToSegments, type TimedWord } from '../shared/transcript-utils'
 import type { TranscriptResult, TranscriptSegment } from '../shared/types'
+import { getDecryptedApiKey } from './store'
 
 const DEEPGRAM_URL =
   'https://api.deepgram.com/v1/listen?model=nova-3&language=en&smart_format=true'
 const TRANSCRIBE_TIMEOUT_MS = 5 * 60 * 1000
+const CACHE_VERSION = 1
 
 interface DeepgramWord {
   word: string
@@ -87,4 +91,86 @@ export async function requestTranscription(
   } finally {
     clearTimeout(timer)
   }
+}
+
+interface CachedTranscript {
+  version: number
+  transcribedAt: string
+  source: { path: string; size: number; mtimeMs: number }
+  segments: TranscriptSegment[]
+}
+
+async function cacheFileFor(filePath: string, size: number, mtimeMs: number): Promise<string> {
+  const dir = path.join(app.getPath('userData'), 'transcripts')
+  await mkdir(dir, { recursive: true })
+  const key = await transcriptCacheKey(filePath, size, mtimeMs)
+  return path.join(dir, `${key}.json`)
+}
+
+async function readCache(cacheFile: string): Promise<TranscriptSegment[] | null> {
+  try {
+    const parsed = JSON.parse(await readFile(cacheFile, 'utf8')) as CachedTranscript
+    if (parsed.version !== CACHE_VERSION || !Array.isArray(parsed.segments)) return null
+    return parsed.segments
+  } catch {
+    return null
+  }
+}
+
+async function writeCache(
+  cacheFile: string,
+  source: CachedTranscript['source'],
+  segments: TranscriptSegment[]
+): Promise<void> {
+  const payload: CachedTranscript = {
+    version: CACHE_VERSION,
+    transcribedAt: new Date().toISOString(),
+    source,
+    segments
+  }
+  await writeFile(cacheFile, JSON.stringify(payload), 'utf8')
+}
+
+const inFlight = new Map<string, Promise<TranscriptResult>>()
+
+export function getTranscript(filePath: string, force: boolean): Promise<TranscriptResult> {
+  if (!force) {
+    const existing = inFlight.get(filePath)
+    if (existing) return existing
+  }
+  const task = runTranscription(filePath, force)
+  inFlight.set(filePath, task)
+  void task.finally(() => {
+    if (inFlight.get(filePath) === task) inFlight.delete(filePath)
+  })
+  return task
+}
+
+async function runTranscription(filePath: string, force: boolean): Promise<TranscriptResult> {
+  let fileStat
+  try {
+    fileStat = await stat(filePath)
+  } catch {
+    return errorResult('unknown', '音频文件不存在或无法读取')
+  }
+  const source = { path: filePath, size: fileStat.size, mtimeMs: fileStat.mtimeMs }
+
+  const cacheFile = await cacheFileFor(filePath, source.size, source.mtimeMs)
+  if (!force) {
+    const cached = await readCache(cacheFile)
+    if (cached) return { status: 'ok', segments: cached, fromCache: true }
+  }
+
+  const apiKey = getDecryptedApiKey()
+  if (!apiKey) return { status: 'no-key' }
+
+  const result = await requestTranscription(filePath, apiKey)
+  if (result.status === 'ok') {
+    try {
+      await writeCache(cacheFile, source, result.segments)
+    } catch {
+      // 缓存写入失败不影响本次转录结果
+    }
+  }
+  return result
 }

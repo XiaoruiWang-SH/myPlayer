@@ -55,6 +55,7 @@ export interface MyPlayerBridge {
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<ApiKeyStatus>
+  getTranscript(path: string, options?: { force?: boolean }): Promise<TranscriptResult>
   onMediaCommand(cb: (cmd: MediaCommand) => void): () => void
   onOpenSettings(cb: () => void): () => void
 }

@@ -16,6 +16,7 @@ const api: MyPlayerBridge = {
   setDeepgramApiKey: (key) => ipcRenderer.invoke('secrets:set-deepgram-key', key),
   clearDeepgramApiKey: () => ipcRenderer.invoke('secrets:clear-deepgram-key'),
   getDeepgramApiKeyStatus: () => ipcRenderer.invoke('secrets:deepgram-key-status'),
+  getTranscript: (path, options) => ipcRenderer.invoke('transcript:get', path, options),
   onMediaCommand: (cb) => {
     const listener = (_event: IpcRendererEvent, cmd: MediaCommand): void => cb(cmd)
     ipcRenderer.on('media:command', listener)

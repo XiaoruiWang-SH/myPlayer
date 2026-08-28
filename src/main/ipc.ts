@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { access } from 'node:fs/promises'
+import type { TranscriptResult } from '../shared/types'
 import { allowMediaPath } from './protocol'
 import {
   clearDeepgramApiKey,
@@ -10,6 +11,7 @@ import {
   writePlaybackState,
   writeSettings
 } from './store'
+import { getTranscript } from './transcript'
 
 export function setupIpc(): void {
   ipcMain.handle('files:open', async (event) => {
@@ -78,4 +80,13 @@ export function setupIpc(): void {
   })
 
   ipcMain.handle('secrets:deepgram-key-status', () => getApiKeyStatus())
+
+  ipcMain.handle('transcript:get', (_event, filePath: unknown, options: unknown): Promise<TranscriptResult> | TranscriptResult => {
+    if (typeof filePath !== 'string' || filePath === '') {
+      return { status: 'error', code: 'unknown', message: '无效的音频路径' }
+    }
+    const force =
+      typeof options === 'object' && options !== null && (options as { force?: unknown }).force === true
+    return getTranscript(filePath, force)
+  })
 }
