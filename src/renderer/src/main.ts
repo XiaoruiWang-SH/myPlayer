@@ -285,8 +285,15 @@ window.myPlayer.onTrackMenuCommand(({ index, action }) => {
   else deleteTrackAt(index)
 })
 
-function clearList(): void {
+async function clearList(): Promise<void> {
   if (playlist.items.length === 0) return
+  const confirmed = await window.myPlayer.confirmAction({
+    title: '清空列表',
+    message: '确定清空播放列表吗？',
+    detail: '列表条目及专属目录中的音频副本都会被删除，且无法恢复。',
+    confirmLabel: '清空'
+  })
+  if (!confirmed) return
   const removed = [...playlist.items]
   playlist.clear()
   failedIds.clear()
@@ -474,7 +481,7 @@ initShortcuts((action: ShortcutAction) => {
 })
 
 addBtn.addEventListener('click', () => void openFiles())
-clearBtn.addEventListener('click', clearList)
+clearBtn.addEventListener('click', () => void clearList())
 
 window.addEventListener('dragover', (event) => event.preventDefault())
 window.addEventListener('drop', (event) => {

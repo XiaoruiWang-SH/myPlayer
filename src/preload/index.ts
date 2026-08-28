@@ -17,6 +17,7 @@ const api: MyPlayerBridge = {
   renameLibraryFile: (path, newName) => ipcRenderer.invoke('library:rename', path, newName),
   deleteLibraryFile: (path, trackId) => ipcRenderer.invoke('library:delete', path, trackId),
   openTrackMenu: (index, path) => ipcRenderer.invoke('track:open-menu', index, path),
+  confirmAction: (options) => ipcRenderer.invoke('ui:confirm', options),
   onTrackMenuCommand: (cb) => {
     const listener = (_event: IpcRendererEvent, cmd: TrackMenuCommand): void => cb(cmd)
     ipcRenderer.on('track-menu:command', listener)

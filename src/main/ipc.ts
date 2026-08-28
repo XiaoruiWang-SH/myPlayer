@@ -1,6 +1,6 @@
 import { BrowserWindow, Menu, dialog, ipcMain } from 'electron'
 import { access } from 'node:fs/promises'
-import type { TranscriptResult } from '../shared/types'
+import type { ConfirmOptions, TranscriptResult } from '../shared/types'
 import { assertLibraryPath, deleteLibraryFile, importToLibrary, renameLibraryFile, revealLibraryFile } from './library'
 import { allowMediaPath } from './protocol'
 import {
@@ -87,6 +87,27 @@ export function setupIpc(): void {
       { label: '删除', click: () => sendCommand('delete') }
     ])
     menu.popup({ window: win })
+  })
+
+  ipcMain.handle('ui:confirm', async (event, options: unknown) => {
+    const opts = typeof options === 'object' && options !== null ? (options as Partial<ConfirmOptions>) : {}
+    if (typeof opts.message !== 'string' || opts.message === '') return false
+    if (typeof opts.confirmLabel !== 'string' || opts.confirmLabel === '') return false
+    const dialogOptions: Electron.MessageBoxOptions = {
+      type: 'question',
+      title: typeof opts.title === 'string' && opts.title !== '' ? opts.title : 'myPlayer',
+      message: opts.message,
+      detail: typeof opts.detail === 'string' && opts.detail !== '' ? opts.detail : undefined,
+      buttons: [opts.confirmLabel, '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const { response } = win
+      ? await dialog.showMessageBox(win, dialogOptions)
+      : await dialog.showMessageBox(dialogOptions)
+    return response === 0
   })
 
   ipcMain.handle('state:load', () => readPersistedState())

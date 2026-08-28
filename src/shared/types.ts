@@ -59,6 +59,14 @@ export interface TrackMenuCommand {
   action: 'rename' | 'delete'
 }
 
+// v1.3：危险操作确认对话框
+export interface ConfirmOptions {
+  title: string
+  message: string
+  detail?: string
+  confirmLabel: string
+}
+
 export type TranscriptResult =
   | { status: 'ok'; segments: TranscriptSegment[]; fromCache: boolean }
   | { status: 'no-key' }
@@ -79,6 +87,7 @@ export interface MyPlayerBridge {
   deleteLibraryFile(path: string, trackId: string): Promise<void>
   openTrackMenu(index: number, path: string): Promise<void>
   onTrackMenuCommand(cb: (cmd: TrackMenuCommand) => void): () => void
+  confirmAction(options: ConfirmOptions): Promise<boolean>
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<ApiKeyStatus>
