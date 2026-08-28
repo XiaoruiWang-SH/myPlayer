@@ -150,20 +150,20 @@
 
 ### 步骤
 
-- [ ] **5.1** `src/shared/transcript-utils.ts`：`TranscriptSegment`/`TranscriptResult` 类型，词→句聚合与缓存键纯函数 + Vitest 单测（标点切分、停顿切分、空输入）
-- [ ] **5.2** 密钥管理：`safeStorage` 加解密与 `secrets.deepgramApiKey` 落盘；设置弹窗新增密钥区（填入/替换/清除，掩码显示）；对应三个密钥 IPC
-- [ ] **5.3** `src/main/transcript.ts`（一）：Deepgram 请求与解析（读文件 → POST → words → 聚合），5 分钟超时，HTTP 状态 → 错误码映射
-- [ ] **5.4** `src/main/transcript.ts`（二）：`userData/transcripts/` 缓存读写（路径+大小+mtime），`force` 重新转录覆盖
-- [ ] **5.5** `getTranscript` IPC 与编排：缓存 → 密钥 → 请求；代际标记丢弃切歌后的过期结果；同文件进行中请求复用
-- [ ] **5.6** 布局重构：左右分栏（左列表 / 右文稿），提高窗口最小尺寸，深色/浅色与窗口缩放回归，v1.0 功能不回归破坏
-- [ ] **5.7** 文稿面板 `ui/transcript-view.ts`：状态机（无曲目 / 未配置密钥 / 转录中 / 错误 / 就绪）、句子渲染、点击跳转、「重新转录」入口
-- [ ] **5.8** 播放联动：开始播放（含自动切歌）触发转录；随 `timeupdate` 高亮当前句子并滚动到可见区域
-- [ ] **5.9** 错误与降级路径：未配置引导（可跳转设置）、401/429/断网提示、重试；全程不阻塞播放
+- [x] **5.1** `src/shared/transcript-utils.ts`：`TranscriptSegment`/`TranscriptResult` 类型，词→句聚合与缓存键纯函数 + Vitest 单测（标点切分、停顿切分、空输入）（2026-08-28，85b744e）
+- [x] **5.2** 密钥管理：`safeStorage` 加解密与 `secrets.deepgramApiKey` 落盘；设置弹窗新增密钥区（填入/替换/清除，掩码显示）；对应三个密钥 IPC（2026-08-28，e6ed213）
+- [x] **5.3** `src/main/transcript.ts`（一）：Deepgram 请求与解析（读文件 → POST → words → 聚合），5 分钟超时，HTTP 状态 → 错误码映射（2026-08-28，3bc96d6）
+- [x] **5.4** `src/main/transcript.ts`（二）：`userData/transcripts/` 缓存读写（路径+大小+mtime），`force` 重新转录覆盖（2026-08-28，a0a7610）
+- [x] **5.5** `getTranscript` IPC 与编排：缓存 → 密钥 → 请求；代际标记丢弃切歌后的过期结果；同文件进行中请求复用（2026-08-28，a0a7610）
+- [x] **5.6** 布局重构：左右分栏（左列表 / 右文稿），提高窗口最小尺寸，深色/浅色与窗口缩放回归，v1.0 功能不回归破坏（2026-08-28，ced4e91）
+- [x] **5.7** 文稿面板 `ui/transcript-view.ts`：状态机（无曲目 / 未配置密钥 / 转录中 / 错误 / 就绪）、句子渲染、点击跳转、「重新转录」入口（2026-08-28，91673e5）
+- [x] **5.8** 播放联动：开始播放（含自动切歌）触发转录；随 `timeupdate` 高亮当前句子并滚动到可见区域（2026-08-28，91673e5）
+- [x] **5.9** 错误与降级路径：未配置引导（可跳转设置）、401/429/断网提示、重试；全程不阻塞播放（2026-08-28，7730d1e）
 - [ ] **5.10** 文档自检（AGENTS.md §3）+ 按 PRD §8.2 全量验收 + 打包后复验 + 版本号与发布
 
 ### 验证
 
-- [ ] `npm run test` / `npm run typecheck` 通过（新增聚合函数与缓存键单测）
+- [x] `npm run test` / `npm run typecheck` 通过（新增聚合函数与缓存键单测，35 tests passed，2026-08-28）
 - [ ] 真实密钥 + 真实英文播客，逐项通过 PRD §8.2（移交用户操作，回报记入本文档）
 - [ ] 布局回归：最小尺寸、拉大缩小、深色/浅色
 - [ ] 提交入库，commit message 注明对应条目（如「实现 FR-25~31」）
