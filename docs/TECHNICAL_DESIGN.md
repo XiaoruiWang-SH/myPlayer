@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.3（新增 v1.2 媒体库与列表状态设计，2026-08-28 评审通过） |
+| 文档版本 | v0.4（新增 v1.3 交互改进设计：手动播放、条目右键菜单、清空确认、文稿选择，2026-08-28 草案待评审） |
 | 日期 | 2026-08-28 |
 | 关联文档 | [PRD.md](./PRD.md) |
 | 技术栈 | Electron + TypeScript + Vite |
@@ -35,7 +35,8 @@
 │  ├─ 应用菜单（含「设置…」入口）                            │
 │  ├─ 媒体键兜底（globalShortcut，备用方案）                 │
 │  ├─ 转录服务（v1.1：Deepgram 请求 / 缓存 / 密钥加密）      │
-│  └─ 媒体库管理（v1.2：专属目录导入拷贝 / 重命名 / 删除）   │
+│  ├─ 媒体库管理（v1.2：专属目录导入拷贝 / 重命名 / 删除）   │
+│  └─ 上下文菜单与确认对话框（v1.3）                          │
 └───────────────▲─────────────────────────────────────────┘
                 │ IPC（contextBridge 暴露，白名单）
 ┌───────────────┴─────────────────────────────────────────┐
@@ -105,6 +106,7 @@ interface PlaylistState {
 - 时长探测：用一个隐藏 `<audio preload="metadata">` 串行探测，避免同时创建大量元素；探测失败标记为不可播放。
 - `ended` 处理逻辑：单曲循环 → 重播当前；列表循环 → 下一首（末尾回绕）；顺序播放 → 下一首，最后一首则停止。
 - v1.2 已播放判定：`ended` 事件或 `currentTime >= duration * 0.98` 时 `played = true` 且 `position = 0`；切歌时把当前 `currentTime` 写回旧条目的 `position`，切入新条目后按其 `position` 续播。
+- v1.3 播放触发与切歌规则（FR-37）：添加文件（⌘O/拖拽）与单击条目均不起播——单击只选中并加载该条目（保持暂停）；唯一起播入口为播放按钮与空格。切歌（单击其他条目、⌘←/⌘→、媒体键上一首/下一首）保持当前播放状态：播放中则继续播放，暂停则保持暂停。播放结束后的自动切歌（上述 `ended` 逻辑）不受影响。
 
 ### 3.3 快捷键管理器（renderer）
 
@@ -208,6 +210,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 - `index.html` + 单一 `styles.css`，使用系统色变量（`-apple-system` 字体、`color-scheme: light dark`）自动适配深色模式。
 - 模块文件：`ui/player-bar.ts`（控制栏）、`ui/playlist-view.ts`（列表渲染，DOM diff 从简——列表规模小，直接重建可接受）、`ui/settings-dialog.ts`、`ui/toast.ts`；v1.1 新增 `ui/transcript-view.ts`（文稿面板）。
 - 布局（v1.1 起）：左右分栏——左侧边栏为播放列表，右侧为转录文稿面板，底部为贯穿全宽的进度条与控制栏；窗口最小尺寸相应提高。
+- v1.3 调整：工具栏移除删除按钮（删除统一走条目右键菜单，FR-38），仅保留 `+` 与清空；文稿面板的句子文本区加 `user-select: text`（覆盖全局 `user-select: none`），允许选中复制（FR-40），其余区域维持不可选。
 
 ### 3.8 转录文稿（v1.1）
 
@@ -238,6 +241,8 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 
 所有错误只影响文稿面板（显示错误态 + 重试入口），不影响播放。
 
+**文本选择（v1.3，FR-40）：** v1.1 起全局 `body { user-select: none }` 使文稿无法选中；v1.3 为句子片段单独开启 `user-select: text`。与点击跳转的冲突处理：句子点击处理器先检查 `window.getSelection().isCollapsed`——存在非空选区时视为拖选结束，不触发跳转；无选区时照常跳转到该句起点。
+
 ### 3.9 媒体库模块（v1.2，main）
 
 `main/library.ts` 集中管理专属目录 `~/音乐/myPlayer`（`path.join(app.getPath('music'), 'myPlayer')`，不存在则递归创建）：
@@ -251,6 +256,20 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 **安全约束：** 三个操作统一做库目录前缀校验（`path.resolve` 后必须以库目录为前缀），拒绝任何越界路径。拷贝为异步操作，大文件（百兆级）耗时可达数秒：渲染层在导入期间显示「正在导入…」提示并允许继续操作其他功能，导入完成后再把新条目加入列表。
 
 **渲染层流程变化：** `添加文件` 由「登记白名单 + 入列表」改为「调 `importToLibrary` → 成功后用库内路径登记白名单 + 入列表（生成 `id`、记录 `importedFrom`/`addedAt`）」。去重在渲染层完成：已有条目的 `importedFrom` 与源路径相同则跳过并提示（FR-32）。
+
+### 3.10 上下文菜单与危险操作确认（v1.3，main）
+
+**条目右键菜单（FR-38）：** 渲染层在列表条目上监听 `contextmenu`（`preventDefault`，空白区域不弹），调用 `openTrackMenu(index, path)`。主进程先对 `path` 做库目录前缀校验（复用 §3.9 约束，越界拒绝），再用 `Menu.buildFromTemplate` 弹原生菜单：
+
+| 菜单项 | 行为 |
+| --- | --- |
+| 重命名 | 向渲染层发送命令 → 进入该条目的行内编辑（复用 FR-33 流程） |
+| 在 Finder 中打开 | 主进程直接 `shell.showItemInFolder(path)`（路径已通过前缀校验，不会定位到库外文件） |
+| 删除 | 向渲染层发送命令 → 移除条目并调 `deleteLibraryFile`（含转录缓存），无二次确认（FR-38） |
+
+命令往返走 `webContents.send('track-menu:command', { index, action })`，`action` 仅 `'rename' | 'delete'`。渲染层收到后校验 `index` 在界内、且该位置条目仍为发起菜单时的条目（以 `id` 比对，防菜单弹出期间列表变化导致错位），校验失败则忽略该命令。
+
+**危险操作确认（FR-39）：** 通用确认桥 `confirmAction(options)` → 主进程 `dialog.showMessageBox`（`type: 'question'`，按钮为 `confirmLabel` 与「取消」，**默认按钮为「取消」**），返回 `boolean`。清空列表在执行前先调用，文案明示「列表条目及专属目录中的音频副本都会被删除」；确认后才走清空 + 批量删库内副本流程（批量删除逻辑不变，见 §3.9）。该桥为通用能力，当前仅清空使用。
 
 ## 4. IPC 接口
 
@@ -271,6 +290,10 @@ interface MyPlayerBridge {
   importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
   renameLibraryFile(path: string, newName: string): Promise<string>  // 返回新路径
   deleteLibraryFile(path: string, trackId: string): Promise<void>  // 同步删除该曲目的转录缓存
+  // 交互（v1.3）
+  openTrackMenu(index: number, path: string): Promise<void>  // 弹出条目右键菜单（path 必须位于专属库内）
+  confirmAction(options: { title: string; message: string; detail?: string; confirmLabel: string }): Promise<boolean>
+  onTrackMenuCommand(cb: (cmd: { index: number; action: 'rename' | 'delete' }) => void): () => void
   // 转录（v1.1；v1.2 起 options 需带曲目 id 作为缓存键）
   getTranscript(path: string, options: { id: string; force?: boolean }): Promise<TranscriptResult>
   setDeepgramApiKey(key: string): Promise<void>
@@ -318,6 +341,8 @@ v1.0 应用无网络请求；v1.1 起唯一网络出口为主进程在用户已�
 
 v1.2 媒体库的导入/重命名/删除仅允许作用于专属库目录内的路径（主进程前缀校验），删除仅限 `fs.unlink` 单个文件，不开放目录级操作；`media://` 白名单机制不变（导入成功后对库内路径登记）。
 
+v1.3 「在 Finder 中打开」复用同一前缀校验，只能定位库内文件；确认对话框由主进程 `dialog.showMessageBox` 呈现，默认按钮为「取消」，渲染层无法绕过确认直接清空。
+
 ## 6. 构建、打包与发布
 
 | 项 | 方案 |
@@ -360,7 +385,7 @@ myPlayer/
 │   │   ├── menu.ts           # 应用菜单
 │   │   ├── media-keys.ts     # globalShortcut 兜底方案（默认关闭）
 │   │   ├── transcript.ts     # v1.1 Deepgram 请求 / 缓存 / 密钥（唯一网络出口）
-│   │   └── library.ts        # v1.2 专属媒体库（导入拷贝 / 重命名 / 删除）
+│   │   └── library.ts        # v1.2 专属媒体库（导入拷贝 / 重命名 / 删除 / 在 Finder 中打开）
 │   ├── preload/
 │   │   └── index.ts          # contextBridge 暴露 window.myPlayer
 │   └── renderer/
@@ -406,6 +431,8 @@ myPlayer/
 | 媒体库副本使磁盘占用翻倍（v1.2） | 大播客文件占用可观 | 导入即用户显式动作；删除列表条目同步删副本；文档明示专属目录位置便于用户自查 |
 | 大文件导入拷贝耗时（v1.2） | 添加后列表出现延迟 | 拷贝异步进行 + 「正在导入…」提示；完成后才入列表，避免指向不存在的路径 |
 | v1.2 升级清空旧列表（v1.2） | 用户需重新导入 | 用户已拍板「清空重来」；首次启动保留设置与密钥，仅清列表与失效的旧转录缓存 |
+| 右键菜单弹出期间列表变化，命令落到错误条目（v1.3） | 误重命名/误删除 | 渲染层收到命令时校验 `index` 界内且条目 `id` 与发起时一致，不符则忽略（§3.10） |
+| 文稿拖选与点击跳转冲突（v1.3） | 选中文字时误触发进度跳转 | 点击处理器检查 `getSelection().isCollapsed`，有选区不跳转（§3.8） |
 
 ## 10. 里程碑
 
@@ -417,3 +444,4 @@ myPlayer/
 | M4 打磨与发布 | 错误处理、深色模式、打包 dmg、按验收清单回归 | 全部验收标准 |
 | M5 转录文稿（v1.1） | 密钥管理、Deepgram 接入与缓存、左右分栏布局、文稿同步高亮与点击跳转 | FR-25~31 |
 | M6 媒体库与列表状态（v1.2） | 专属库导入/重命名/删除、每首进度与已播放状态、持久化 schema v2、转录缓存改按曲目 ID | FR-32~36 |
+| M7 交互改进（v1.3） | 手动播放、条目右键菜单（含在 Finder 中打开）、清空二次确认、文稿可选中复制 | FR-37~40 |
