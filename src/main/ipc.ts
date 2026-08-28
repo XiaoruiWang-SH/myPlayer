@@ -1,7 +1,7 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, Menu, dialog, ipcMain } from 'electron'
 import { access } from 'node:fs/promises'
 import type { TranscriptResult } from '../shared/types'
-import { deleteLibraryFile, importToLibrary, renameLibraryFile } from './library'
+import { assertLibraryPath, deleteLibraryFile, importToLibrary, renameLibraryFile, revealLibraryFile } from './library'
 import { allowMediaPath } from './protocol'
 import {
   clearDeepgramApiKey,
@@ -69,6 +69,24 @@ export function setupIpc(): void {
     if (typeof path !== 'string' || path === '') throw new Error('参数无效')
     await deleteLibraryFile(path)
     if (typeof trackId === 'string' && trackId !== '') await deleteTranscriptCache(trackId)
+  })
+
+  ipcMain.handle('track:open-menu', (event, index: unknown, path: unknown) => {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) throw new Error('参数无效')
+    if (typeof path !== 'string' || path === '') throw new Error('参数无效')
+    const target = assertLibraryPath(path)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    const sendCommand = (action: 'rename' | 'delete'): void => {
+      if (!event.sender.isDestroyed()) event.sender.send('track-menu:command', { index, action })
+    }
+    const menu = Menu.buildFromTemplate([
+      { label: '重命名', click: () => sendCommand('rename') },
+      { label: '在 Finder 中打开', click: () => revealLibraryFile(target) },
+      { type: 'separator' },
+      { label: '删除', click: () => sendCommand('delete') }
+    ])
+    menu.popup({ window: win })
   })
 
   ipcMain.handle('state:load', () => readPersistedState())

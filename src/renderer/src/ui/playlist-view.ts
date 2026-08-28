@@ -1,18 +1,24 @@
 import { formatTime } from '../../../shared/audio-utils'
 import type { Playlist } from '../playlist'
 
+export interface PlaylistViewHandle {
+  beginRenameAt(index: number): void
+}
+
 export function renderPlaylist(
   playlist: Playlist,
   listEl: HTMLElement,
   hintEl: HTMLElement,
   onSelect: (index: number) => void,
-  onRename: (index: number, newName: string) => void
-): void {
+  onRename: (index: number, newName: string) => void,
+  onContextMenu: (index: number, path: string) => void
+): PlaylistViewHandle {
   listEl.replaceChildren()
+  const renameAt = new Map<number, () => void>()
   const empty = playlist.items.length === 0
   hintEl.style.display = empty ? '' : 'none'
   listEl.style.display = empty ? 'none' : ''
-  if (empty) return
+  if (empty) return { beginRenameAt: () => {} }
 
   playlist.items.forEach((track, index) => {
     const li = document.createElement('li')
@@ -49,6 +55,11 @@ export function renderPlaylist(
       clearTimeout(clickTimer)
       beginRename()
     })
+    li.addEventListener('contextmenu', (event) => {
+      event.preventDefault()
+      if (li.querySelector('.rename-input')) return
+      onContextMenu(index, track.path)
+    })
 
     function beginRename(): void {
       if (li.querySelector('.rename-input')) return
@@ -79,7 +90,12 @@ export function renderPlaylist(
       input.select()
     }
 
+    renameAt.set(index, beginRename)
     li.append(marker, name, duration)
     listEl.appendChild(li)
   })
+
+  return {
+    beginRenameAt: (index) => renameAt.get(index)?.()
+  }
 }

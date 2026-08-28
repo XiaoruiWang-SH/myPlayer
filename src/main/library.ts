@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import { copyFile, mkdir, readdir, rename, unlink } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { resolveImportName, validateRename } from '../shared/library-utils'
@@ -15,13 +15,17 @@ async function ensureLibraryDir(): Promise<string> {
   return dir
 }
 
-function assertInLibrary(path: string): string {
+export function assertLibraryPath(path: string): string {
   const dir = resolve(getLibraryDir())
   const target = resolve(path)
   if (target !== dir && !target.startsWith(dir + '/')) {
     throw new Error('路径不在媒体库目录内')
   }
   return target
+}
+
+export function revealLibraryFile(path: string): void {
+  shell.showItemInFolder(assertLibraryPath(path))
 }
 
 async function listLibraryNames(): Promise<string[]> {
@@ -57,7 +61,7 @@ export async function importToLibrary(sourcePaths: string[]): Promise<ImportResu
 }
 
 export async function renameLibraryFile(oldPath: string, rawNewName: string): Promise<string> {
-  const from = assertInLibrary(oldPath)
+  const from = assertLibraryPath(oldPath)
   const others = (await listLibraryNames()).filter((name) => name.toLowerCase() !== basename(from).toLowerCase())
   const validation = validateRename(rawNewName, others)
   if (!validation.ok) throw new Error(validation.reason)
@@ -67,6 +71,6 @@ export async function renameLibraryFile(oldPath: string, rawNewName: string): Pr
 }
 
 export async function deleteLibraryFile(path: string): Promise<void> {
-  const target = assertInLibrary(path)
+  const target = assertLibraryPath(path)
   await unlink(target)
 }

@@ -53,6 +53,12 @@ export type ImportResult =
   | { sourcePath: string; ok: true; libraryPath: string }
   | { sourcePath: string; ok: false; reason: string }
 
+// v1.3：条目右键菜单命令（主进程 → 渲染层）
+export interface TrackMenuCommand {
+  index: number
+  action: 'rename' | 'delete'
+}
+
 export type TranscriptResult =
   | { status: 'ok'; segments: TranscriptSegment[]; fromCache: boolean }
   | { status: 'no-key' }
@@ -71,6 +77,8 @@ export interface MyPlayerBridge {
   importToLibrary(sourcePaths: string[]): Promise<ImportResult[]>
   renameLibraryFile(path: string, newName: string): Promise<string>
   deleteLibraryFile(path: string, trackId: string): Promise<void>
+  openTrackMenu(index: number, path: string): Promise<void>
+  onTrackMenuCommand(cb: (cmd: TrackMenuCommand) => void): () => void
   setDeepgramApiKey(key: string): Promise<void>
   clearDeepgramApiKey(): Promise<void>
   getDeepgramApiKeyStatus(): Promise<ApiKeyStatus>

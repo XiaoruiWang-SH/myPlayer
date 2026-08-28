@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { MediaCommand, MyPlayerBridge } from '../shared/types'
+import type { MediaCommand, MyPlayerBridge, TrackMenuCommand } from '../shared/types'
 
 const api: MyPlayerBridge = {
   openFiles: () => ipcRenderer.invoke('files:open'),
@@ -16,6 +16,14 @@ const api: MyPlayerBridge = {
   importToLibrary: (sourcePaths) => ipcRenderer.invoke('library:import', sourcePaths),
   renameLibraryFile: (path, newName) => ipcRenderer.invoke('library:rename', path, newName),
   deleteLibraryFile: (path, trackId) => ipcRenderer.invoke('library:delete', path, trackId),
+  openTrackMenu: (index, path) => ipcRenderer.invoke('track:open-menu', index, path),
+  onTrackMenuCommand: (cb) => {
+    const listener = (_event: IpcRendererEvent, cmd: TrackMenuCommand): void => cb(cmd)
+    ipcRenderer.on('track-menu:command', listener)
+    return () => {
+      ipcRenderer.removeListener('track-menu:command', listener)
+    }
+  },
   setDeepgramApiKey: (key) => ipcRenderer.invoke('secrets:set-deepgram-key', key),
   clearDeepgramApiKey: () => ipcRenderer.invoke('secrets:clear-deepgram-key'),
   getDeepgramApiKeyStatus: () => ipcRenderer.invoke('secrets:deepgram-key-status'),

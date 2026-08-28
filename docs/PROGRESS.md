@@ -203,7 +203,7 @@
 ### 步骤
 
 - [x] **7.1** 手动播放改造（FR-37）：⌘O/拖拽导入不再自动起播；单击条目 = 选中并加载（保持暂停）；切歌（单击、⌘←/⌘→、媒体键上一首/下一首）保持播放状态（播放中 → 加载新曲目续播，暂停 → 保持暂停）；起播仅剩播放按钮与空格；播放结束自动切歌不受影响（2026-08-28）
-- [ ] **7.2** 条目右键菜单（FR-38）：主进程 `openTrackMenu`（库目录前缀校验 + 原生 Menu + `shell.showItemInFolder`）与 `track-menu:command` 命令通道；渲染层接入 `contextmenu`（重命名/删除复用现有流程，收命令时校验界内与条目 `id`）；移除工具栏删除按钮
+- [x] **7.2** 条目右键菜单（FR-38）：主进程 `openTrackMenu`（库目录前缀校验 + 原生 Menu + `shell.showItemInFolder`）与 `track-menu:command` 命令通道；渲染层接入 `contextmenu`（重命名/删除复用现有流程，收命令时校验界内与条目 `id`）；移除工具栏删除按钮（2026-08-28）
 - [ ] **7.3** 清空二次确认（FR-39）：通用 `confirmAction` 确认桥（`dialog.showMessageBox`，默认按钮为取消）+ 清空流程前置调用，文案明示库内副本将被删除
 - [ ] **7.4** 文稿可选择（FR-40）：句子片段 `user-select: text` + 点击跳转处理器的 `getSelection().isCollapsed` 保护
 - [ ] **7.5** 文档自检（AGENTS.md §3）+ 按 PRD §8.4 全量验收 + 打包后复验 + 版本号与发布（1.3.0）

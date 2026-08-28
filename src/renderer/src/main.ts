@@ -8,7 +8,7 @@ import { Player } from './player'
 import { Playlist, type Track } from './playlist'
 import { initShortcuts, type ShortcutAction } from './shortcuts'
 import { initPlayerBar } from './ui/player-bar'
-import { renderPlaylist } from './ui/playlist-view'
+import { renderPlaylist, type PlaylistViewHandle } from './ui/playlist-view'
 import { initSettingsDialog } from './ui/settings-dialog'
 import { showToast } from './ui/toast'
 import { initTranscriptView } from './ui/transcript-view'
@@ -21,18 +21,19 @@ const failedIds = new Set<string>()
 const listEl = document.getElementById('playlist') as HTMLElement
 const hintEl = document.getElementById('playlist-hint') as HTMLElement
 const addBtn = document.getElementById('add-btn') as HTMLButtonElement
-const removeBtn = document.getElementById('remove-btn') as HTMLButtonElement
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement
 
+let playlistView: PlaylistViewHandle = { beginRenameAt: () => {} }
+
 function render(): void {
-  renderPlaylist(
+  playlistView = renderPlaylist(
     playlist,
     listEl,
     hintEl,
     (index) => void switchToTrack(index, !player.paused),
-    (index, newName) => void renameTrack(index, newName)
+    (index, newName) => void renameTrack(index, newName),
+    (index, path) => void openTrackMenu(index, path)
   )
-  removeBtn.disabled = playlist.currentIndex < 0
   clearBtn.disabled = playlist.items.length === 0
 }
 
@@ -249,8 +250,8 @@ async function deleteLibraryTracks(tracks: Track[]): Promise<void> {
   }
 }
 
-function removeCurrent(): void {
-  const result = playlist.removeAt(playlist.currentIndex)
+function deleteTrackAt(index: number): void {
+  const result = playlist.removeAt(index)
   if (!result) return
   if (result.wasCurrent) {
     player.unload()
@@ -261,6 +262,28 @@ function removeCurrent(): void {
   persistNow()
   render()
 }
+
+// 记录弹出菜单时的条目，命令回传时校验，防止菜单弹出期间列表变化导致错位（技术文档 §3.10）
+let pendingMenuTrackId: string | null = null
+
+async function openTrackMenu(index: number, path: string): Promise<void> {
+  const track = playlist.items[index]
+  if (!track) return
+  pendingMenuTrackId = track.id
+  try {
+    await window.myPlayer.openTrackMenu(index, path)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '无法打开菜单')
+  }
+}
+
+window.myPlayer.onTrackMenuCommand(({ index, action }) => {
+  const track = playlist.items[index]
+  if (!track || track.id !== pendingMenuTrackId) return
+  pendingMenuTrackId = null
+  if (action === 'rename') playlistView.beginRenameAt(index)
+  else deleteTrackAt(index)
+})
 
 function clearList(): void {
   if (playlist.items.length === 0) return
@@ -451,7 +474,6 @@ initShortcuts((action: ShortcutAction) => {
 })
 
 addBtn.addEventListener('click', () => void openFiles())
-removeBtn.addEventListener('click', removeCurrent)
 clearBtn.addEventListener('click', clearList)
 
 window.addEventListener('dragover', (event) => event.preventDefault())
