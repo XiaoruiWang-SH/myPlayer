@@ -52,10 +52,98 @@ body {
   cursor: default;
 }
 
-#playlist-area {
+#main-row {
   flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#playlist-area {
+  flex: none;
+  width: 260px;
+  min-width: 180px;
   position: relative;
   overflow-y: auto;
+  border-right: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+#transcript-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.transcript-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.transcript-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#retranscribe-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+#retranscribe-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#transcript-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+
+.transcript-placeholder {
+  margin-top: 32px;
+  text-align: center;
+  line-height: 1.7;
+  opacity: 0.55;
+}
+
+.transcript-action {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.transcript-list {
+  list-style: none;
+}
+
+.transcript-seg {
+  padding: 6px 10px;
+  border-radius: 6px;
+  line-height: 1.7;
+  cursor: pointer;
+}
+
+.transcript-seg:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.transcript-seg.current {
+  background: rgba(10, 132, 255, 0.18);
 }
 
 .hint {

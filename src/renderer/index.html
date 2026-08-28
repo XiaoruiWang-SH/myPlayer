@@ -12,9 +12,18 @@
         <button id="remove-btn" type="button" title="删除当前曲目" disabled>删除</button>
         <button id="clear-btn" type="button" title="清空列表" disabled>清空</button>
       </header>
-      <main id="playlist-area">
-        <p id="playlist-hint" class="hint">拖入 MP3 或按 ⌘O 打开</p>
-        <ol id="playlist"></ol>
+      <main id="main-row">
+        <section id="playlist-area">
+          <p id="playlist-hint" class="hint">拖入 MP3 或按 ⌘O 打开</p>
+          <ol id="playlist"></ol>
+        </section>
+        <section id="transcript-area">
+          <header class="transcript-header">
+            <span class="transcript-title">转录文稿</span>
+            <button id="retranscribe-btn" type="button" disabled>重新转录</button>
+          </header>
+          <div id="transcript-body"></div>
+        </section>
       </main>
       <footer id="player-bar">
         <div class="progress-row">
