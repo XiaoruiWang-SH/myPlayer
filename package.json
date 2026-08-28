@@ -1,6 +1,6 @@
 {
   "name": "myplayer",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "macOS 本地音频播放器 —— 打开即播、键盘友好、没有多余功能。",
   "main": "./out/main/index.js",
   "private": true,
@@ -15,7 +15,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
     "test": "vitest run",
-    "dist": "npm run build && electron-builder --mac"
+    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
   },
   "dependencies": {
     "electron-store": "^11.0.2"
