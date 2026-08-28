@@ -347,9 +347,20 @@ const transcriptView = initTranscriptView({
     transcriptForId = null
     void ensureTranscript()
   },
-  onRetranscribe: () => void ensureTranscript(true),
+  onRetranscribe: () => void confirmRetranscribe(),
   onOpenSettings: () => settingsDialog.open()
 })
+
+async function confirmRetranscribe(): Promise<void> {
+  const confirmed = await window.myPlayer.confirmAction({
+    title: '重新转录',
+    message: '确定重新转录吗？',
+    detail: '音频会再次上传 Deepgram 转录（消耗转录配额，约需 1 分钟），已有本地文稿缓存将被覆盖。',
+    confirmLabel: '重新转录'
+  })
+  if (!confirmed) return
+  void ensureTranscript(true)
+}
 
 async function ensureTranscript(force = false): Promise<void> {
   const track = playlist.current
