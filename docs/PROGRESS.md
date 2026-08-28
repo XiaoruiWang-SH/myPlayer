@@ -225,7 +225,7 @@
 ### 步骤
 
 - [x] **8.1** 重新转录二次确认（FR-41）：渲染层 `onRetranscribe` 先调 `confirmAction`（标题/按钮「重新转录」，详情说明消耗配额与覆盖缓存，默认按钮为取消），确认后才 `ensureTranscript(force)`（2026-08-28）
-- [ ] **8.2** 打包产物清理（FR-42）：`package.json` 增加 `predist` 脚本（`rm -rf release`），`npm run dist` 自动先清空产物目录再打包
+- [x] **8.2** 打包产物清理（FR-42）：`package.json` 增加 `predist` 脚本（`rm -rf release`），`npm run dist` 自动先清空产物目录再打包（2026-08-28）
 - [ ] **8.3** 文档自检（AGENTS.md §3）+ 按 PRD §8.5 验收 + 版本号升至 1.3.1 与发布（含打包后复验、打 tag）
 
 ### 验证
