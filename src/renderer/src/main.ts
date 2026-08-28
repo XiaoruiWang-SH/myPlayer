@@ -10,6 +10,7 @@ import { initPlayerBar } from './ui/player-bar'
 import { renderPlaylist } from './ui/playlist-view'
 import { initSettingsDialog } from './ui/settings-dialog'
 import { showToast } from './ui/toast'
+import { initTranscriptView } from './ui/transcript-view'
 
 const player = new Player()
 const playlist = new Playlist()
@@ -167,6 +168,7 @@ function removeCurrent(): void {
   if (result.wasCurrent) {
     player.unload()
     mediaSession.updateTrack(null)
+    resetTranscript()
   }
   persistNow()
   render()
@@ -178,6 +180,7 @@ function clearList(): void {
   failedIds.clear()
   player.unload()
   mediaSession.updateTrack(null)
+  resetTranscript()
   persistNow()
   render()
 }
@@ -211,6 +214,58 @@ const settingsDialog = initSettingsDialog({
 })
 
 window.myPlayer.onOpenSettings(() => settingsDialog.open())
+
+// ---- 转录文稿（FR-25~28）----
+
+let transcriptForPath: string | null = null
+let transcriptGeneration = 0
+
+const transcriptView = initTranscriptView({
+  getCurrentTime: () => player.currentTime,
+  onSeek: (time) => player.seekTo(time),
+  onRetry: () => {
+    transcriptForPath = null
+    void ensureTranscript()
+  },
+  onRetranscribe: () => void ensureTranscript(true),
+  onOpenSettings: () => settingsDialog.open()
+})
+
+async function ensureTranscript(force = false): Promise<void> {
+  const track = playlist.current
+  if (!track) return
+  if (!force && transcriptForPath === track.path) return
+  transcriptForPath = track.path
+  const generation = ++transcriptGeneration
+  transcriptView.showLoading()
+  const result = await window.myPlayer.getTranscript(track.path, { force })
+  // 切歌后返回的过期结果直接丢弃（技术文档 §3.8）
+  if (generation !== transcriptGeneration || playlist.current?.path !== track.path) return
+  switch (result.status) {
+    case 'ok':
+      transcriptView.showSegments(result.segments)
+      break
+    case 'no-key':
+      transcriptView.showNoKey()
+      break
+    case 'error':
+      transcriptView.showError(result.message)
+      break
+  }
+}
+
+function resetTranscript(): void {
+  transcriptGeneration++
+  transcriptForPath = null
+  transcriptView.showEmpty()
+}
+
+// 开始播放（含恢复播放、自动切歌）时确保当前曲目有转录；暂停态不触发
+player.on('statechange', () => {
+  if (!player.paused) void ensureTranscript()
+})
+
+player.on('timeupdate', () => transcriptView.updateHighlight(player.currentTime))
 
 // ---- 启动恢复（FR-19~21）----
 
