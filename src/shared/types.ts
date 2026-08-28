@@ -37,6 +37,21 @@ export interface TranscriptSegment {
   text: string
 }
 
+// v1.2：曲目持久化结构（不含运行时字段）
+export interface PersistedTrack {
+  id: string
+  path: string
+  importedFrom?: string
+  addedAt: number
+  position: number
+  played: boolean
+}
+
+// v1.2：媒体库导入结果
+export type ImportResult =
+  | { sourcePath: string; ok: true; libraryPath: string }
+  | { sourcePath: string; ok: false; reason: string }
+
 export type TranscriptResult =
   | { status: 'ok'; segments: TranscriptSegment[]; fromCache: boolean }
   | { status: 'no-key' }
