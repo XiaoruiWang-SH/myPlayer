@@ -1,12 +1,20 @@
 import type Store from 'electron-store'
+import { safeStorage } from 'electron'
 import { DEFAULT_SEEK_STEP, SPEED_STEPS } from '../shared/audio-utils'
 import { normalizeSeekStep } from '../shared/settings-utils'
-import type { LoopMode, PersistedData, PlaybackState, Settings } from '../shared/types'
+import type {
+  ApiKeyStatus,
+  LoopMode,
+  PersistedData,
+  PlaybackState,
+  Settings
+} from '../shared/types'
 
 const LOOP_MODES: readonly LoopMode[] = ['list', 'single', 'sequential']
 
 const DEFAULTS: PersistedData = {
   settings: { seekStep: DEFAULT_SEEK_STEP },
+  secrets: {},
   playbackState: {
     playlist: [],
     currentIndex: -1,
@@ -76,7 +84,7 @@ export function sanitizeSettings(input: unknown): Settings {
   return { seekStep: seekStep ?? fallback.seekStep }
 }
 
-export function readPersistedState(): PersistedData {
+export function readPersistedState(): Omit<PersistedData, 'secrets'> {
   try {
     const s = getStore()
     return {
@@ -100,4 +108,32 @@ export function writeSettings(input: unknown): Settings {
   const settings = sanitizeSettings(input)
   getStore().set('settings', settings)
   return settings
+}
+
+export function saveDeepgramApiKey(plainKey: string): void {
+  const key = plainKey.trim()
+  if (key === '') throw new Error('API 密钥不能为空')
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持密钥加密存储')
+  getStore().set('secrets', { deepgramApiKey: safeStorage.encryptString(key).toString('base64') })
+}
+
+export function clearDeepgramApiKey(): void {
+  getStore().set('secrets', {})
+}
+
+export function getDecryptedApiKey(): string | null {
+  const cipher = getStore().get('secrets').deepgramApiKey
+  if (typeof cipher !== 'string' || cipher === '') return null
+  try {
+    return safeStorage.decryptString(Buffer.from(cipher, 'base64'))
+  } catch {
+    return null
+  }
+}
+
+export function getApiKeyStatus(): ApiKeyStatus {
+  const key = getDecryptedApiKey()
+  if (!key) return { configured: false, maskedKey: null }
+  const tail = key.length >= 4 ? key.slice(-4) : key
+  return { configured: true, maskedKey: `••••••••${tail}` }
 }

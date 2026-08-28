@@ -227,7 +227,7 @@ interface MyPlayerBridge {
   // invoke（请求-响应）
   openFiles(): Promise<string[]>
   allowPaths(paths: string[]): Promise<void>  // 拖拽路径登记进媒体白名单
-  loadState(): Promise<PersistedData>
+  loadState(): Promise<Omit<PersistedData, 'secrets'>>
   saveState(state: PersistedData['playbackState']): Promise<void>
   saveStateSync(state: PersistedData['playbackState']): void  // 窗口卸载时的同步落盘通道
   getSettings(): Promise<PersistedData['settings']>

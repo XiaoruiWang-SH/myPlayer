@@ -2,8 +2,11 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { access } from 'node:fs/promises'
 import { allowMediaPath } from './protocol'
 import {
+  clearDeepgramApiKey,
+  getApiKeyStatus,
   readPersistedState,
   readSettings,
+  saveDeepgramApiKey,
   writePlaybackState,
   writeSettings
 } from './store'
@@ -64,4 +67,15 @@ export function setupIpc(): void {
   ipcMain.handle('settings:set', (_event, settings: unknown) => {
     writeSettings(settings)
   })
+
+  ipcMain.handle('secrets:set-deepgram-key', (_event, key: unknown) => {
+    if (typeof key !== 'string') throw new Error('API 密钥格式无效')
+    saveDeepgramApiKey(key)
+  })
+
+  ipcMain.handle('secrets:clear-deepgram-key', () => {
+    clearDeepgramApiKey()
+  })
+
+  ipcMain.handle('secrets:deepgram-key-status', () => getApiKeyStatus())
 }
