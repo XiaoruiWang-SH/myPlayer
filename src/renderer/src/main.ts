@@ -1,6 +1,6 @@
 import { VOLUME_STEP, adjustVolume } from '../../shared/audio-utils'
-import { nextTrackIndex, prevTrackIndex } from '../../shared/playlist-utils'
-import type { PlaybackState } from '../../shared/types'
+import { isMp3Path, nextTrackIndex, prevTrackIndex } from '../../shared/playlist-utils'
+import type { ImportResult, PlaybackState } from '../../shared/types'
 import { DurationProber } from './duration-prober'
 import { initMediaSession } from './media-session'
 import { Player } from './player'
@@ -143,17 +143,30 @@ function playNext(): void {
 
 async function addFiles(paths: string[]): Promise<void> {
   if (paths.length === 0) return
-  const wasEmpty = playlist.currentIndex === -1
-  const { added, duplicateCount, rejectedCount } = playlist.add(paths)
+  const mp3Paths = paths.filter(isMp3Path)
+  const rejectedCount = paths.length - mp3Paths.length
   if (rejectedCount > 0) showToast(`已忽略 ${rejectedCount} 个非 MP3 文件`)
+  const newSources = mp3Paths.filter((path) => !playlist.hasImportedSource(path))
+  const duplicateCount = mp3Paths.length - newSources.length
   if (duplicateCount > 0) showToast(`已忽略 ${duplicateCount} 个重复文件`)
-  if (added.length > 0) {
-    await window.myPlayer.allowPaths(added.map((track) => track.path))
-    prober.enqueue(added)
-    persistNow()
-  }
+  if (newSources.length === 0) return
+
+  const wasIdle = playlist.currentIndex === -1
+  showToast(`正在导入 ${newSources.length} 个音频…`)
+  const results = await window.myPlayer.importToLibrary(newSources)
+  const succeeded = results.filter((r): r is Extract<ImportResult, { ok: true }> => r.ok)
+  const failedCount = results.length - succeeded.length
+  if (failedCount > 0) showToast(`${failedCount} 个文件导入失败`)
+  if (succeeded.length === 0) return
+
+  const added = playlist.addImported(
+    succeeded.map((result) => ({ sourcePath: result.sourcePath, libraryPath: result.libraryPath }))
+  )
+  await window.myPlayer.allowPaths(added.map((track) => track.path))
+  prober.enqueue(added)
+  persistNow()
   render()
-  if (wasEmpty && added.length > 0) {
+  if (wasIdle && added.length > 0) {
     void playIndex(playlist.items.length - added.length)
   }
 }
