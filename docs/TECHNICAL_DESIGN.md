@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.1（初稿，待评审） |
+| 文档版本 | v0.2（新增 v1.1 转录模块设计，待评审） |
 | 日期 | 2026-08-27 |
 | 关联文档 | [PRD.md](./PRD.md) |
 | 技术栈 | Electron + TypeScript + Vite |
@@ -20,6 +20,7 @@
 | 渲染层 UI | **原生 DOM + TS，无框架** | 界面简单（一个列表 + 控制栏），无框架可保持体积小、依赖少；若后续复杂度上升可平滑迁移到 Preact/Vue |
 | 持久化 | **electron-store** | 基于 `app.getPath('userData')` 的 JSON 存储，API 简单，满足设置 + 状态记忆 |
 | 打包 | **electron-builder** | 成熟稳定，产出 macOS dmg/zip，支持 arm64/x64 |
+| 语音识别（v1.1） | **Deepgram Pre-recorded API**（`nova-3`、`language=en`、`smart_format`） | 用户已有密钥；速度快于实时（1 小时音频约 30–60 秒出结果）；提供词级时间戳，满足逐句同步；按量计费，配合本地缓存重复播放零费用 |
 
 **与备选方案的取舍：** 原生 Swift+SwiftUI 体积与系统集成更优、Tauri 体积更小，但用户选择 Electron，主要换取 Web 技术栈的熟悉度与未来跨平台空间。代价（体积 ~100MB+、内存偏高）已记录在 PRD 非功能需求的预期内。
 
@@ -32,7 +33,8 @@
 │  ├─ 文件打开对话框（dialog）                               │
 │  ├─ 持久化（electron-store：设置 + 播放状态）              │
 │  ├─ 应用菜单（含「设置…」入口）                            │
-│  └─ 媒体键兜底（globalShortcut，备用方案）                 │
+│  ├─ 媒体键兜底（globalShortcut，备用方案）                 │
+│  └─ 转录服务（v1.1：Deepgram 请求 / 缓存 / 密钥加密）      │
 └───────────────▲─────────────────────────────────────────┘
                 │ IPC（contextBridge 暴露，白名单）
 ┌───────────────┴─────────────────────────────────────────┐
@@ -46,6 +48,7 @@
 │  ├─ Playlist 模型与列表渲染                               │
 │  ├─ 快捷键管理器（keydown 分发）                          │
 │  ├─ MediaSession（系统媒体键 / 正在播放）                 │
+│  ├─ 文稿面板（v1.1：转录展示 / 高亮 / 点击跳转）           │
 │  └─ UI（控制栏 / 进度条 / 设置弹窗 / Toast）              │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -130,6 +133,9 @@ interface PersistedData {
   settings: {
     seekStep: number        // 1–120，默认 5
   }
+  secrets: {                // v1.1
+    deepgramApiKey?: string // safeStorage 加密后的密文（base64）
+  }
   playbackState: {
     playlist: string[]      // 文件路径数组（含顺序）
     currentIndex: number
@@ -180,7 +186,37 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 ### 3.7 UI 结构
 
 - `index.html` + 单一 `styles.css`，使用系统色变量（`-apple-system` 字体、`color-scheme: light dark`）自动适配深色模式。
-- 模块文件：`ui/player-bar.ts`（控制栏）、`ui/playlist-view.ts`（列表渲染，DOM diff 从简——列表规模小，直接重建可接受）、`ui/settings-dialog.ts`、`ui/toast.ts`。
+- 模块文件：`ui/player-bar.ts`（控制栏）、`ui/playlist-view.ts`（列表渲染，DOM diff 从简——列表规模小，直接重建可接受）、`ui/settings-dialog.ts`、`ui/toast.ts`；v1.1 新增 `ui/transcript-view.ts`（文稿面板）。
+- 布局（v1.1 起）：左右分栏——左侧边栏为播放列表，右侧为转录文稿面板，底部为贯穿全宽的进度条与控制栏；窗口最小尺寸相应提高。
+
+### 3.8 转录文稿（v1.1）
+
+**进程分工：** 网络请求、密钥、缓存全部在主进程（`main/transcript.ts`：Deepgram 的请求、解析、错误映射、缓存读写集中在该模块，未来接入其他 ASR 时在此整体替换）；渲染层只发起请求、消费结果并渲染。
+
+**触发与编排：**
+
+1. 渲染层在开始播放时（用户点击播放、自动切歌；启动恢复的暂停态不触发，待真正开始播放再触发）对当前曲目调用 `getTranscript(path)`。
+2. 主进程处理顺序：查缓存 → 命中直接返回；未命中且未配置密钥 → 返回 `no-key`；否则读取文件请求 Deepgram，成功后写缓存并返回。
+3. 防竞态：请求携带代际标记（当前曲目的路径），切歌后返回的过期结果直接丢弃；同一文件的进行中请求复用同一 Promise，不重复计费。
+
+**Deepgram 调用：** `POST https://api.deepgram.com/v1/listen?model=nova-3&language=en&smart_format=true`，请求头 `Authorization: Token <key>`、`Content-Type: audio/mpeg`，请求体为音频文件内容（目标时长 ≤ 1 小时，整文件读入内存可接受）。取响应 `results.channels[0].alternatives[0].words[]`（`word`/`punctuated_word`/`start`/`end`）。整体超时 5 分钟。
+
+**词 → 句子聚合（shared 纯函数，可单测）：** 顺序累积词语，遇到句末标点（`. ? ! …`）或相邻词时间间隔 > 2 秒时收束为一个片段，产出 `TranscriptSegment { start, end, text }`。
+
+**缓存：** 目录 `userData/transcripts/`；缓存键 = `路径 + 大小 + mtime` 拼接后的 SHA-1，文件名即键；「重新转录」（`force`）跳过读缓存并在成功后覆盖写入。
+
+**密钥存储：** 设置弹窗新增 Deepgram 密钥区（填入/替换/清除，界面仅显示掩码）；`safeStorage.encryptString` 加密后写入 `secrets.deepgramApiKey`，仅在发起请求时解密，永不下发到渲染层。
+
+**错误映射：**
+
+| 情形 | 结果 |
+| --- | --- |
+| HTTP 401/403 | `unauthorized`：密钥无效，提示去设置检查 |
+| HTTP 429 | `quota`：额度/频率受限 |
+| 网络异常/超时 | `network` |
+| 其他 | `unknown`（附服务端信息） |
+
+所有错误只影响文稿面板（显示错误态 + 重试入口），不影响播放。
 
 ## 4. IPC 接口
 
@@ -197,12 +233,28 @@ interface MyPlayerBridge {
   getSettings(): Promise<PersistedData['settings']>
   setSettings(s: PersistedData['settings']): Promise<void>
   filterExisting(paths: string[]): Promise<{ valid: string[]; missing: string[] }>
+  // 转录（v1.1）
+  getTranscript(path: string, options?: { force?: boolean }): Promise<TranscriptResult>
+  setDeepgramApiKey(key: string): Promise<void>
+  clearDeepgramApiKey(): Promise<void>
+  getDeepgramApiKeyStatus(): Promise<{ configured: boolean; maskedKey: string | null }>
   // on（主进程 → 渲染层事件）
   onMediaCommand(cb: (cmd: 'play-pause' | 'next' | 'previous') => void): () => void  // 兜底媒体键方案
   onOpenSettings(cb: () => void): () => void  // 菜单「设置…」入口
   // preload 工具
   getPathForFile(file: File): string
 }
+```
+
+转录相关类型（同置于 `src/shared/types.ts`）：
+
+```ts
+interface TranscriptSegment { start: number; end: number; text: string }
+
+type TranscriptResult =
+  | { status: 'ok'; segments: TranscriptSegment[]; fromCache: boolean }
+  | { status: 'no-key' }
+  | { status: 'error'; code: 'unauthorized' | 'quota' | 'network' | 'unknown'; message: string }
 ```
 
 主进程侧用 `ipcMain.handle` 逐个注册，不开放通用 `fs` 通道。`saveStateSync` 走 `ipcRenderer.sendSync('state:save-sync')`（主进程用 `ipcMain.on` 接收）：渲染层在 `beforeunload` 时调用，保证退出路径上落盘可靠。
@@ -219,7 +271,7 @@ interface MyPlayerBridge {
 | `setWindowOpenHandler` | 拒绝所有新窗口 | 防止被内容劫持开窗 |
 | 导航 | `will-navigate` 阻止 | 同上 |
 
-应用无网络请求；菜单保留 About/设置…/Quit/编辑菜单（编辑菜单用于输入框）。
+v1.0 应用无网络请求；v1.1 起唯一网络出口为主进程在用户已配置密钥时对 `api.deepgram.com` 的转录请求（渲染层无任何直连外网路径）。菜单保留 About/设置…/Quit/编辑菜单（编辑菜单用于输入框）。
 
 ## 6. 构建、打包与发布
 
@@ -252,6 +304,7 @@ myPlayer/
 │   │   ├── playlist-utils.ts  # 纯函数（MP3 过滤、去重键、循环模式前后首计算）
 │   │   ├── shortcut-utils.ts  # 纯函数（按键事件 → 快捷键组合串）
 │   │   ├── settings-utils.ts  # 纯函数（步长设置校验 1–120）
+│   │   ├── transcript-utils.ts # v1.1 纯函数（词→句聚合、缓存键）
 │   │   └── *.test.ts          # 以上纯函数的 Vitest 单测
 │   ├── main/
 │   │   ├── index.ts          # 生命周期、窗口创建
@@ -259,7 +312,8 @@ myPlayer/
 │   │   ├── protocol.ts       # media:// 协议与路径白名单
 │   │   ├── store.ts          # electron-store 封装
 │   │   ├── menu.ts           # 应用菜单
-│   │   └── media-keys.ts     # globalShortcut 兜底方案（默认关闭）
+│   │   ├── media-keys.ts     # globalShortcut 兜底方案（默认关闭）
+│   │   └── transcript.ts     # v1.1 Deepgram 请求 / 缓存 / 密钥（唯一网络出口）
 │   ├── preload/
 │   │   └── index.ts          # contextBridge 暴露 window.myPlayer
 │   └── renderer/
@@ -277,7 +331,8 @@ myPlayer/
 │               ├── player-bar.ts
 │               ├── playlist-view.ts
 │               ├── settings-dialog.ts
-│               └── toast.ts
+│               ├── toast.ts
+│               └── transcript-view.ts  # v1.1 文稿面板
 └── resources/                # 应用图标等静态资源
 ```
 
@@ -285,7 +340,7 @@ myPlayer/
 
 | 层 | 方式 |
 | --- | --- |
-| 纯逻辑 | Vitest 单元测试：快捷键映射解析、步长钳制（`seekBy` 边界）、循环模式的下一首计算、设置校验（1–120） |
+| 纯逻辑 | Vitest 单元测试：快捷键映射解析、步长钳制（`seekBy` 边界）、循环模式的下一首计算、设置校验（1–120）、词→句聚合（v1.1） |
 | 集成 | 手动测试清单，直接对应 PRD §8 验收标准 |
 | E2E | v1.0 暂不引入（Playwright + Electron 留作后续），以手动清单覆盖 |
 
@@ -298,6 +353,9 @@ myPlayer/
 | 大列表时长探测慢 | 列表打开卡顿 | 串行 + 懒探测，先展示文件名后补时长 |
 | 无签名应用首次打开被 Gatekeeper 拦截 | 自用无碍，分发给他人体验差 | 文档说明「右键打开」绕行；需要分发时补签名公证 |
 | 渲染层直接访问本地文件的安全面 | 潜在越权读取 | 自定义 `media://` 协议限定可播放目录来源（仅限用户通过对话框/拖拽显式加入的路径，由主进程维护白名单） |
+| Deepgram 服务不可用 / 定价调整（v1.1） | 转录不可用或费用变化 | 转录集中在 `main/transcript.ts`，可整体替换为其他 ASR；转录失败不影响播放 |
+| 长音频上传耗时与内存（v1.1） | 1 小时音频约 30–80MB，上传期间有等待 | 目标场景 ≤1 小时，整文件上传可接受；5 分钟超时 + 「正在转录中…」状态 + 缓存消除重复等待 |
+| API 密钥泄露（v1.1） | Deepgram 账户被盗用 | `safeStorage` 加密落盘、密钥不进渲染层、支持一键清除；密钥仅用于对 Deepgram 的请求头 |
 
 ## 10. 里程碑
 
@@ -307,3 +365,4 @@ myPlayer/
 | M2 播放列表与快捷键 | 列表增删切歌、循环模式、播放结束行为、⌘O/拖拽、全部快捷键 | FR-07、FR-09~15、快捷键表 |
 | M3 设置与记忆 | 设置弹窗、步长自定义、状态持久化与恢复、媒体键（含兜底验证） | FR-16~24 |
 | M4 打磨与发布 | 错误处理、深色模式、打包 dmg、按验收清单回归 | 全部验收标准 |
+| M5 转录文稿（v1.1） | 密钥管理、Deepgram 接入与缓存、左右分栏布局、文稿同步高亮与点击跳转 | FR-25~31 |
