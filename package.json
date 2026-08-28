@@ -1,6 +1,6 @@
 {
   "name": "myplayer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "macOS 本地音频播放器 —— 打开即播、键盘友好、没有多余功能。",
   "main": "./out/main/index.js",
   "private": true,
