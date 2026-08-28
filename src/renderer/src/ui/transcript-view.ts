@@ -12,8 +12,8 @@ export interface TranscriptViewHandle {
   showEmpty(): void
   showLoading(): void
   showNoKey(): void
-  showError(message: string): void
   showSegments(segments: TranscriptSegment[]): void
+  showError(message: string, options?: { withSettingsLink?: boolean }): void
   updateHighlight(time: number): void
 }
 
@@ -76,8 +76,16 @@ export function initTranscriptView(options: TranscriptViewOptions): TranscriptVi
         onClick: () => options.onOpenSettings()
       })
     },
-    showError(message: string) {
+    showError(message: string, opts?: { withSettingsLink?: boolean }) {
       renderPlaceholder(message, { label: '重试', onClick: () => options.onRetry() })
+      if (opts?.withSettingsLink) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'transcript-action'
+        btn.textContent = '去设置…'
+        btn.addEventListener('click', () => options.onOpenSettings())
+        body.append(btn)
+      }
     },
     showSegments(list: TranscriptSegment[]) {
       segments = list

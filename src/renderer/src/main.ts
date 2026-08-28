@@ -249,7 +249,9 @@ async function ensureTranscript(force = false): Promise<void> {
       transcriptView.showNoKey()
       break
     case 'error':
-      transcriptView.showError(result.message)
+      transcriptView.showError(result.message, {
+        withSettingsLink: result.code === 'unauthorized'
+      })
       break
   }
 }
