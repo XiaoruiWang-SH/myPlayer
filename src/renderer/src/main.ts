@@ -29,7 +29,7 @@ function render(): void {
     playlist,
     listEl,
     hintEl,
-    (index) => void playIndex(index),
+    (index) => void switchToTrack(index, !player.paused),
     (index, newName) => void renameTrack(index, newName)
   )
   removeBtn.disabled = playlist.currentIndex < 0
@@ -106,9 +106,13 @@ window.addEventListener('beforeunload', () => {
 
 // ---- 播放编排 ----
 
-async function playIndex(index: number): Promise<void> {
+// 当前是否应处于播放状态：手动切歌按此保持状态，错误跳歌按此决定是否续播（FR-37）
+let playIntent = false
+
+async function switchToTrack(index: number, autoplay: boolean): Promise<void> {
   const track = playlist.items[index]
   if (!track) return
+  playIntent = autoplay
   const prev = playlist.current
   if (prev && prev !== track && !prev.played) prev.position = player.currentTime
   playlist.currentIndex = index
@@ -117,13 +121,18 @@ async function playIndex(index: number): Promise<void> {
   try {
     await player.load(track.path)
     if (track.position > 0) player.seekTo(track.position)
-    await player.play()
+    if (autoplay) await player.play()
     failedIds.clear()
     persistNow()
   } catch {
     // error 事件统一处理（提示 + 跳下一首）
   }
 }
+
+// 播放按钮/空格等直接起播路径不经过 switchToTrack，用播放事件同步 playIntent
+player.on('statechange', () => {
+  if (!player.paused) playIntent = true
+})
 
 function findNextPlayable(from: number): number | null {
   let index = from
@@ -152,7 +161,7 @@ player.on('ended', () => {
     return
   }
   const next = nextTrackIndex(playlist.currentIndex, playlist.items.length, playlist.loopMode)
-  if (next !== null) void playIndex(next)
+  if (next !== null) void switchToTrack(next, true)
 })
 
 player.on('error', () => {
@@ -163,17 +172,17 @@ player.on('error', () => {
   const next = findNextPlayable(playlist.currentIndex)
   showToast(next !== null ? `「${track.name}」无法播放，已跳到下一首` : `「${track.name}」无法播放`)
   render()
-  if (next !== null) void playIndex(next)
+  if (next !== null) void switchToTrack(next, playIntent)
 })
 
 function playPrev(): void {
   const target = prevTrackIndex(playlist.currentIndex, playlist.items.length, playlist.loopMode)
-  if (target >= 0 && target !== playlist.currentIndex) void playIndex(target)
+  if (target >= 0 && target !== playlist.currentIndex) void switchToTrack(target, !player.paused)
 }
 
 function playNext(): void {
   const target = nextTrackIndex(playlist.currentIndex, playlist.items.length, playlist.loopMode)
-  if (target !== null) void playIndex(target)
+  if (target !== null) void switchToTrack(target, !player.paused)
 }
 
 async function addFiles(paths: string[]): Promise<void> {
@@ -186,7 +195,6 @@ async function addFiles(paths: string[]): Promise<void> {
   if (duplicateCount > 0) showToast(`已忽略 ${duplicateCount} 个重复文件`)
   if (newSources.length === 0) return
 
-  const wasIdle = playlist.currentIndex === -1
   showToast(`正在导入 ${newSources.length} 个音频…`)
   const results = await window.myPlayer.importToLibrary(newSources)
   const succeeded = results.filter((r): r is Extract<ImportResult, { ok: true }> => r.ok)
@@ -201,9 +209,6 @@ async function addFiles(paths: string[]): Promise<void> {
   prober.enqueue(added)
   persistNow()
   render()
-  if (wasIdle && added.length > 0) {
-    void playIndex(playlist.items.length - added.length)
-  }
 }
 
 async function openFiles(): Promise<void> {
@@ -275,7 +280,7 @@ function togglePlay(): void {
     player.toggle()
     return
   }
-  if (playlist.items.length > 0) void playIndex(Math.max(playlist.currentIndex, 0))
+  if (playlist.items.length > 0) void switchToTrack(Math.max(playlist.currentIndex, 0), true)
 }
 
 function changeVolume(delta: number): void {
