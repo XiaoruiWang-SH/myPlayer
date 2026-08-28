@@ -104,7 +104,12 @@ export function initTranscriptView(options: TranscriptViewOptions): TranscriptVi
         li.className = 'transcript-seg'
         li.textContent = seg.text
         li.title = '点击跳转到此句'
-        li.addEventListener('click', () => options.onSeek(seg.start))
+        li.addEventListener('click', () => {
+          // 拖选产生的非空选区视为选择操作，不触发跳转（FR-40）
+          const selection = window.getSelection()
+          if (selection && !selection.isCollapsed) return
+          options.onSeek(seg.start)
+        })
         ol.append(li)
         segmentEls.push(li)
       }

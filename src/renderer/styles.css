@@ -137,6 +137,8 @@ body {
   border-radius: 6px;
   line-height: 1.7;
   cursor: pointer;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .transcript-seg:hover {

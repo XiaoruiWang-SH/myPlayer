@@ -241,7 +241,7 @@ MediaSession 激活后，macOS 控制中心「正在播放」会显示曲目信�
 
 所有错误只影响文稿面板（显示错误态 + 重试入口），不影响播放。
 
-**文本选择（v1.3，FR-40）：** v1.1 起全局 `body { user-select: none }` 使文稿无法选中；v1.3 为句子片段单独开启 `user-select: text`。与点击跳转的冲突处理：句子点击处理器先检查 `window.getSelection().isCollapsed`——存在非空选区时视为拖选结束，不触发跳转；无选区时照常跳转到该句起点。
+**文本选择（v1.3，FR-40）：** v1.1 起全局 `body { user-select: none }` 使文稿无法选中；v1.3 为句子片段单独开启 `user-select: text`。与点击跳转的冲突处理：句子点击处理器先取 `window.getSelection()`（可能为 null）检查 `isCollapsed`——存在非空选区时视为拖选结束，不触发跳转；无选区时照常跳转到该句起点。
 
 ### 3.9 媒体库模块（v1.2，main）
 
